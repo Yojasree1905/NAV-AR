@@ -169,6 +169,12 @@ class RouteProvider {
         lat: parseFloat(r.lat),
         lon: parseFloat(r.lon),
       }));
+    } catch (err) {
+      console.warn('Geocode failed:', err);
+      return [];
+    }
+  }
+
   // ------------------------------------------------------------------
   // High-precision surveyed campus walk route (Ladies Hostel G/H/J)
   // Direct walkway geometry from OpenStreetMap survey (map.osm)
