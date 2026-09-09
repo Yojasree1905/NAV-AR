@@ -76,6 +76,7 @@ const CAMPUS_SURVEYED_POIS = [
     tags: { barrier: 'gate', name: 'Main Gate' },
     aliases: ['main gate', 'hostel gate', 'the gate', 'security gate', 'gate'],
   },
+  {
     id: 'node/14165878672',
     name: 'Convenience Store',
     lat: 12.9681441,

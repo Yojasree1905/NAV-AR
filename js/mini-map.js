@@ -219,6 +219,17 @@ class MiniMapController {
   expand() {
     this.isExpanded = true;
     this.container.classList.add('expanded');
+    // Force the safe top-right anchor the CSS .expanded rule expects —
+    // otherwise a stale inline left/top from an earlier drag (set by the
+    // drag handler below) overrides the CSS `right` anchor once `width`
+    // is no longer `auto`, and the expanded box can render partly or
+    // fully off-screen with no way to drag it back (isExpanded blocks
+    // dragging). Real-device finding: reproduced by dragging the small
+    // widget near the right edge, then tapping to expand.
+    this.container.style.left = 'auto';
+    this.container.style.bottom = 'auto';
+    this.container.style.top = '68px';
+    this.container.style.right = '12px';
     if (this.expandBtn) this.expandBtn.style.display = 'none';
     if (this.closeBtn) this.closeBtn.style.display = 'flex';
 
