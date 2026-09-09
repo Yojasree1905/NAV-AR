@@ -9,11 +9,21 @@
  * This is critical: routing from a building centroid causes the path to
  * cross through the building structure before reaching the road network.
  *
- *   G Block       → OSM node 14093702529 (G Block North Entrance on Hostel Road)
- *   H Block       → OSM node 14165878673 (H Block West Entrance on path)
- *   J Block       → OSM node 14165878669 (J Block South Foyer on Hostel Road)
- *   Main Gate     → OSM node 14165878675 (Hostel Complex Main Gate on road)
- *   Convenience Store → OSM node 14165878672 (Crossroad near J Block)
+ * A newer OSM export (2026-09-09, later edits) also added full building
+ * *outline* ways for G/H/J (with real building:levels tags) — useful
+ * context, but their centroids were deliberately NOT used here, for the
+ * same reason above: a building's true center is usually inside the
+ * building, not on the path network. Checked each entry point against
+ * the newer export before updating anything: G Block's and J Block's
+ * entry nodes are byte-for-byte unchanged; only H Block's moved (a ~5m
+ * refinement) and Main Gate was intentionally repositioned and properly
+ * named — both applied below, the unchanged ones left alone.
+ *
+ *   G Block       → OSM node 14093702529 (G Block North Entrance on Hostel Road) — unchanged
+ *   H Block       → OSM node 14165878673 (H Block West Entrance on path) — refined ~5m, 2026-09-09
+ *   J Block       → OSM node 14165878669 (J Block South Foyer on Hostel Road) — unchanged
+ *   Main Gate     → OSM node 14165878674, named "security point & main gate for hostels" — repositioned ~22m + renamed, 2026-09-09
+ *   Convenience Store → OSM node 14165878672 (Crossroad near J Block) — moved <2m, within GPS noise, left as-is
  * -----------------------------------------------------------------------
  */
 (function () {
@@ -24,9 +34,9 @@
   // inside any building, so routing works correctly from any direction.
   const CALIBRATED_COORDS = {
     hostel_g:          { lat: 12.9677686, lon: 79.1593426 }, // OSM 14093702529 — G Block North Entrance
-    hostel_h:          { lat: 12.9681076, lon: 79.1595178 }, // OSM 14165878673 — H Block West Entrance
+    hostel_h:          { lat: 12.9681514, lon: 79.1595125 }, // OSM 14165878673 — H Block West Entrance (refined 2026-09-09)
     hostel_j:          { lat: 12.9679849, lon: 79.1591590 }, // OSM 14165878669 — J Block South Foyer
-    main_gate:         { lat: 12.9685617, lon: 79.1594558 }, // OSM 14165878675 — Hostel Complex Main Gate
+    main_gate:         { lat: 12.9683659, lon: 79.1595077 }, // OSM 14165878674 — "security point & main gate for hostels" (repositioned + renamed 2026-09-09)
     convenience_store: { lat: 12.9681441, lon: 79.1594053 }, // OSM 14165878672 — Crossroad near J Block
   };
 
