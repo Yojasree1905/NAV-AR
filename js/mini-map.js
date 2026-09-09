@@ -106,6 +106,36 @@ class MiniMapController {
     let origLeft, origTop;
     this._didDrag = false;
 
+    // Clamp helper — ensures element stays within viewport
+    const clampToViewport = () => {
+      const w = el.offsetWidth  || 110;
+      const h = el.offsetHeight || 110;
+      const maxW = window.innerWidth  - w - 8;
+      const maxH = window.innerHeight - h - 8;
+      const curLeft = parseFloat(el.style.left);
+      const curTop  = parseFloat(el.style.top);
+      if (!isNaN(curLeft)) el.style.left = `${Math.max(8, Math.min(maxW, curLeft))}px`;
+      if (!isNaN(curTop))  el.style.top  = `${Math.max(50, Math.min(maxH, curTop))}px`;
+    };
+
+    // Re-clamp whenever viewport resizes (e.g. phone rotation)
+    window.addEventListener('resize', clampToViewport, { passive: true });
+
+    // Double-tap to reset to default top-right corner position
+    let lastTap = 0;
+    el.addEventListener('touchend', (e) => {
+      const now = Date.now();
+      if (now - lastTap < 300) {
+        el.style.transition = 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)';
+        el.style.right = '14px';
+        el.style.top   = '72px';
+        el.style.left  = 'auto';
+        el.style.bottom = 'auto';
+        setTimeout(() => { el.style.transition = ''; }, 350);
+      }
+      lastTap = now;
+    }, { passive: true });
+
     const onPointerDown = (clientX, clientY, target) => {
       if (this.isExpanded) return; // don't drag when expanded full modal
       if (target.closest('.mini-map-btn')) return;
@@ -136,19 +166,22 @@ class MiniMapController {
         this._didDrag = true;
       }
 
-      const maxW = window.innerWidth - el.offsetWidth - 8;
-      const maxH = window.innerHeight - el.offsetHeight - 8;
+      const w = el.offsetWidth  || 110;
+      const h = el.offsetHeight || 110;
+      const maxW = window.innerWidth  - w - 8;
+      const maxH = window.innerHeight - h - 8;
       const newLeft = Math.max(8, Math.min(maxW, origLeft + dx));
-      const newTop = Math.max(50, Math.min(maxH, origTop + dy));
+      const newTop  = Math.max(50, Math.min(maxH, origTop + dy));
 
       el.style.left = `${newLeft}px`;
-      el.style.top = `${newTop}px`;
+      el.style.top  = `${newTop}px`;
     };
 
     const onPointerUp = () => {
       if (!isDragging) return;
       isDragging = false;
       el.style.transition = '';
+      clampToViewport(); // final clamp in case of fast swipe
     };
 
     // Touch events for mobile

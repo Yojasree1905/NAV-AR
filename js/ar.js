@@ -180,9 +180,9 @@ class ArOverlay {
       heading = 0; // Default to true North if compass not yet active
     }
 
-    // Update mini-compass widget if available
-    if (typeof miniMap !== 'undefined' && miniMap) {
-      miniMap.updateCompass(heading);
+    // -- Update mini-compass --
+    if (window.miniMap) {
+      window.miniMap.updateCompass(heading);
     }
 
     // 1. Perspective Road Pathway Overlay (Images 1 & 2)
@@ -319,12 +319,13 @@ class ArOverlay {
     if (this.currentLat === null || this.currentLon === null) return;
     const halfFov = this.fovH / 2;
     const { ctx } = this;
-    const MAX_VISIBLE_DISTANCE = 85; // Strict: only show AR reticle when within 85m!
+    const MAX_VISIBLE_DISTANCE = 200; // Show buildings up to 200m away
 
-    // Targets to display: active destination if within 85m, or closest building within 85m
+    // Targets to display: active destination (always while navigating) or closest buildings
     let targets = [];
     if (this.activeDestination && this.activeDestination.lat != null) {
       const dist = _haversine(this.currentLat, this.currentLon, this.activeDestination.lat, this.activeDestination.lon);
+      // Always show destination reticle when navigating (up to 200m)
       if (dist <= MAX_VISIBLE_DISTANCE) {
         targets = [{
           name: this.activeDestination.name,
@@ -336,7 +337,7 @@ class ArOverlay {
         }];
       }
     } else {
-      // Explore mode: find buildings in front of camera (< 85m)
+      // Explore mode: find buildings within camera FOV (< 200m)
       const inFront = this.nearbyBuildings
         .filter(b => b.lat && b.lon)
         .map(b => {
@@ -346,7 +347,7 @@ class ArOverlay {
           rel = ((rel + 540) % 360) - 180;
           return { ...b, dist, rel };
         })
-        .filter(b => b.dist <= MAX_VISIBLE_DISTANCE && Math.abs(b.rel) <= halfFov * 0.85)
+        .filter(b => b.dist <= MAX_VISIBLE_DISTANCE && Math.abs(b.rel) <= halfFov * 1.0)
         .sort((a, b) => a.dist - b.dist);
 
       if (inFront.length) targets = inFront.slice(0, 2);
@@ -360,15 +361,14 @@ class ArOverlay {
       let rel = bearing - heading;
       rel = ((rel + 540) % 360) - 180;
 
-      // STRICT CAMERA CHECK: If not aiming within camera FOV, DO NOT SHOW ON SCREEN!
-      if (Math.abs(rel) > halfFov * 0.85) {
-        continue; // Completely hidden if not pointing directly at it!
-      }
+      // Only draw if within camera FOV
+      if (Math.abs(rel) > halfFov * 1.0) continue;
 
       // Inside Camera View: Draw Circular Dotted Reticle + Overlayed Purpose Box + Arrow
       const screenX = w / 2 + (rel / halfFov) * (w / 2);
       const screenY = topOffset + (h - topOffset - botOffset) * 0.44;
-      const ringRadius = Math.max(22, Math.min(38, 38 - (dist / 85) * 12));
+      const ringRadius = Math.max(22, Math.min(38, 38 - (dist / 200) * 12));
+
 
       ctx.save();
       ctx.translate(screenX, screenY);

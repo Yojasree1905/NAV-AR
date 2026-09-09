@@ -177,7 +177,9 @@ class RouteProvider {
 
   // ------------------------------------------------------------------
   // High-precision surveyed campus walk route (Ladies Hostel G/H/J)
-  // Direct walkway geometry from OpenStreetMap survey (map.osm)
+  // Direct walkway geometry from OpenStreetMap survey (map.osm).
+  // Uses ONLY real path nodes — block centroids are NOT in this graph,
+  // so routing never jumps through a building to reach the road network.
   // ------------------------------------------------------------------
   _getCampusWalkRoute(from, to) {
     if (!from || !to) return null;
@@ -188,7 +190,7 @@ class RouteProvider {
     const distTo   = _haversineMeters(to.lat, to.lon, campusCenter.lat, campusCenter.lon);
     if (distFrom > maxRadius || distTo > maxRadius) return null;
 
-    // Find closest graph node to from & to
+    // Find closest WALKWAY node to from & to
     let startNode = null;
     let endNode = null;
     let minStartD = Infinity;
@@ -202,6 +204,12 @@ class RouteProvider {
     }
 
     if (!startNode || !endNode) return null;
+    if (startNode === endNode) {
+      // Already at/near the destination node
+      const pts = [[from.lat, from.lon], [to.lat, to.lon]];
+      const d = _haversineMeters(from.lat, from.lon, to.lat, to.lon);
+      return { points: pts, distanceMeters: d, durationSeconds: Math.round(d / 1.2), steps: [{ instruction: `Head toward ${CAMPUS_WALK_NODES[endNode].name}.`, distanceMeters: d }] };
+    }
 
     // Dijkstra shortest path
     const dist = {};
@@ -240,14 +248,13 @@ class RouteProvider {
     }
 
     const rawPoints = pathIds.map(id => [CAMPUS_WALK_NODES[id].lat, CAMPUS_WALK_NODES[id].lon]);
-    // Prepend origin and append destination if not identical
+    // Prepend actual GPS origin; skip duplicates closer than 1.5m
     const points = [[from.lat, from.lon]];
     for (const p of rawPoints) {
       const last = points[points.length - 1];
-      if (_haversineMeters(last[0], last[1], p[0], p[1]) > 1.5) {
-        points.push(p);
-      }
+      if (_haversineMeters(last[0], last[1], p[0], p[1]) > 1.5) points.push(p);
     }
+    // Append actual destination if meaningfully different from last path node
     const lastP = points[points.length - 1];
     if (_haversineMeters(lastP[0], lastP[1], to.lat, to.lon) > 1.5) {
       points.push([to.lat, to.lon]);
@@ -258,18 +265,8 @@ class RouteProvider {
       totalDist += _haversineMeters(points[i][0], points[i][1], points[i+1][0], points[i+1][1]);
     }
 
-    const steps = [
-      {
-        instruction: `Head along Hostel Road toward ${CAMPUS_WALK_NODES[startNode]?.name || 'pathway'}.`,
-        distanceMeters: minStartD,
-      }
-    ];
-    if (pathIds.length > 1) {
-      steps.push({
-        instruction: `Follow the pedestrian pathway toward ${CAMPUS_WALK_NODES[endNode]?.name || 'destination'}.`,
-        distanceMeters: dist[endNode],
-      });
-    }
+    const destName = CAMPUS_WALK_NODES[endNode]?.name || 'your destination';
+    const steps = [{ instruction: `Head toward ${destName}.`, distanceMeters: totalDist }];
 
     return {
       points,
@@ -280,27 +277,28 @@ class RouteProvider {
   }
 }
 
-// Surveyed pedestrian walkway network for Ladies Hostel G/H/J & Hostel Road (from map.osm)
+// ---------------------------------------------------------------------------
+// Surveyed pedestrian walkway network — Ladies Hostel G/H/J & Hostel Road
+// (from map.osm). ONLY real path nodes are here — no building centroids.
+// Block centroids were removed because snapping a route start/end to a
+// building center creates a segment that crosses through the building
+// before reaching the road network, which looks wrong on the AR overlay.
+// ---------------------------------------------------------------------------
 const CAMPUS_WALK_NODES = {
   '14165878668': { lat: 12.9678623, lon: 79.1591697, name: 'Hostel Road near Guest House' },
-  '14165878669': { lat: 12.9679849, lon: 79.1591590, name: 'J Block South Foyer Entrance' },
-  '14165878670': { lat: 12.9680110, lon: 79.1589930, name: 'J Block West Lift Entrance' },
+  '14165878669': { lat: 12.9679849, lon: 79.1591590, name: 'J Block South Foyer' },
+  '14165878670': { lat: 12.9680110, lon: 79.1589930, name: 'J Block West Side' },
   '10032723291': { lat: 12.9683349, lon: 79.1589822, name: 'J Block North-West Corner' },
   '14165878671': { lat: 12.9683346, lon: 79.1594027, name: 'J Block North-East Bend' },
-  '14165878672': { lat: 12.9681441, lon: 79.1594053, name: 'Central Crossroad between J & H' },
+  '14165878672': { lat: 12.9681441, lon: 79.1594053, name: 'Crossroad between J & H' },
   '14165907135': { lat: 12.9680005, lon: 79.1594026, name: 'Passageway between J & H' },
   '14165878673': { lat: 12.9681076, lon: 79.1595178, name: 'H Block West Entrance' },
   '14093702530': { lat: 12.9683070, lon: 79.1595854, name: 'H Block North-West Path' },
   '14165878674': { lat: 12.9683998, lon: 79.1594990, name: 'North Road Pathway' },
-  '14165878675': { lat: 12.9685617, lon: 79.1594558, name: 'Hostel Complex Main Gate' },
-  '14165878676': { lat: 12.9677647, lon: 79.1595216, name: 'Courtyard & Mess Walkway' },
+  '14165878675': { lat: 12.9685617, lon: 79.1594558, name: 'Main Gate' },
+  '14165878676': { lat: 12.9677647, lon: 79.1595216, name: 'Courtyard Walkway' },
   '14093702529': { lat: 12.9677686, lon: 79.1593426, name: 'G Block North Entrance' },
   '14093702528': { lat: 12.9677581, lon: 79.1598230, name: 'G Block East Road' },
-  'n_gh':        { lat: 12.9677940, lon: 79.1588970, name: 'VIT Guest House' },
-  'n_park':      { lat: 12.9676287, lon: 79.1592126, name: 'Campus Parking Area' },
-  'b_g':         { lat: 12.9676012, lon: 79.1594861, name: 'Ladies Hostel G' },
-  'b_h':         { lat: 12.9680394, lon: 79.1596759, name: 'Ladies Hostel H' },
-  'b_j':         { lat: 12.9681335, lon: 79.1591946, name: 'Ladies Hostel J' },
 };
 
 const CAMPUS_WALK_EDGES = [
@@ -319,13 +317,6 @@ const CAMPUS_WALK_EDGES = [
   ['14165878673', '14093702530'],
   ['14093702530', '14165878674'],
   ['14165878674', '14165878675'],
-  ['14165878668', 'n_park'],
-  ['14165878668', 'n_gh'],
-  ['b_g', '14093702529'],
-  ['b_g', '14165878676'],
-  ['b_h', '14165878673'],
-  ['b_j', '14165878669'],
-  ['b_j', '14165878672'],
 ];
 
 // Pre-compute campus walkway adjacency graph

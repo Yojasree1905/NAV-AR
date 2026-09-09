@@ -215,7 +215,40 @@ function init() {
 
   // Update top bar label
   if (els.currentVenueLabel) els.currentVenueLabel.textContent = 'NAV-AR';
-  setStatus('Tap Start to begin');
+  setStatus('Starting camera…');
+
+  // Auto-start camera immediately so the user sees live view on launch
+  _autoStartCamera();
+}
+
+// ------------------------------------------------------------------
+// Auto camera — starts live view immediately without needing mic tap
+// ------------------------------------------------------------------
+async function _autoStartCamera() {
+  await ArOverlay.requestPermission();
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false,
+    });
+    els.video.srcObject = camStream;
+    await els.video.play();
+  } catch (_) {
+    setStatus('Tap mic to begin');
+    return;
+  }
+
+  resizeCanvas();
+  ar = new ArOverlay(els.overlay);
+  ar.setFov(settings.cameraFovH);
+  ar.start();
+
+  if (typeof MiniMapController !== 'undefined') {
+    miniMap = new MiniMapController();
+    window.miniMap = miniMap; // expose globally so ar.js can update compass
+  }
+
+  setStatus('Say "Hey Nav" or tap mic');
 }
 
 // ------------------------------------------------------------------
@@ -440,29 +473,38 @@ async function onMicTapped() {
 async function startAssistant() {
   if (state.isAssistantRunning) return;
   state.isAssistantRunning = true;
-  setStatus('Starting camera & sensors…');
+  setStatus('Starting…');
   if (els.voiceHint) els.voiceHint.textContent = 'Activating assistant…';
 
-  await ArOverlay.requestPermission();
-
-  try {
-    camStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-      audio: false,
-    });
-    els.video.srcObject = camStream;
-    await els.video.play();
+  // Camera & AR — skip if already started by _autoStartCamera()
+  if (!camStream) {
+    await ArOverlay.requestPermission();
+    try {
+      camStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      });
+      els.video.srcObject = camStream;
+      await els.video.play();
+    } catch (_) {
+      setStatus('Voice guidance active (no camera).');
+    }
+  }
+  if (!localizer && camStream) {
     localizer = new Localizer(els.video);
-  } catch (_) {
-    setStatus('Voice guidance active (no camera).');
+  }
+  if (!ar) {
+    resizeCanvas();
+    ar = new ArOverlay(els.overlay);
+    ar.setFov(settings.cameraFovH);
+    ar.start();
+  }
+  if (!miniMap && typeof MiniMapController !== 'undefined') {
+    miniMap = new MiniMapController();
+    window.miniMap = miniMap;
   }
 
-  resizeCanvas();
-  ar = new ArOverlay(els.overlay);
-  ar.setFov(settings.cameraFovH);
-  ar.start();
-
-  // GPS tracker - live tracking for AR building detection & mini-map
+  // GPS tracker
   gpsTracker = new GpsTracker();
   gpsTracker.start({ onUpdate: _handleGpsUpdate, onError: _handleGpsError });
 
@@ -480,7 +522,7 @@ async function startAssistant() {
   state.phase = 'idle';
 
   voice.speak(
-    'Navigator ready. Say "Hey Nav" followed by any destination — a building, gate, or place name.',
+    'Navigator ready. Say "Hey Nav" followed by any destination.',
     { key: 'ready', cooldownMs: 30000 }
   );
   setStatus('Say "Hey Nav" or tap mic');
@@ -675,15 +717,20 @@ function _handleGpsUpdate(fix) {
   if (!fix) return;
   state.outdoorPosition = fix;
 
-  // Always update mini-map position and AR nearby buildings in view!
+  // Always update mini-map position and AR nearby buildings
   miniMap && miniMap.updatePosition(fix.lat, fix.lon, fix.accuracy);
   ar && ar.setNearbyBuildings(_allDestinations, fix.lat, fix.lon);
+
+  // GPS course-over-ground as compass fallback (fires when device compass unavailable)
+  if (ar && fix.heading !== null && fix.heading !== undefined && !ar.hasLiveHeading) {
+    ar.heading = fix.heading;
+  }
 
   if (!gpsNavActive || state.phase !== 'navigating') return;
   const route = state.activeRoute;
   if (!route?.polyline?.length) return;
 
-  const { haversineDistance, initialBearing } = window.__venueHelpers;
+  const { haversineDistance } = window.__venueHelpers;
   const arrivalRadius = Math.max(GPS_ARRIVAL_BASE_M, (fix.accuracy || 0) * 0.6);
 
   // Advance past points we've already passed
