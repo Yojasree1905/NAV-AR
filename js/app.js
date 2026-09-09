@@ -576,28 +576,36 @@ async function startAssistant() {
 async function _refreshNearbyPois() {
   try {
     const campusPlaces = _getKnownCampusPlaces();
-    // Default reference is calibrated campus location (VIT Vellore)
     let lat = 12.9682, lon = 79.1594;
     const fix = await getFreshGpsFix();
     if (fix && fix.lat && fix.lon) {
       lat = fix.lat;
       lon = fix.lon;
     }
-    if (!mapDiscovery) mapDiscovery = new MapDiscovery();
-    const mapPois = await mapDiscovery.getDestinationList(lat, lon);
 
-    // Merge: campus anchors first, then external places
-    const merged = [...campusPlaces];
-    const seen = new Set(campusPlaces.map((p) => p.name.toLowerCase()));
-    for (const p of mapPois) {
-      const key = p.name.toLowerCase();
-      if (!seen.has(key)) {
-        merged.push(p);
-        seen.add(key);
-      }
-    }
-    _renderDestinationList(merged);
-    ar && ar.setNearbyBuildings(merged, lat, lon);
+    // Scoped down to just the curated campus list for now (2026-09-09) —
+    // the live Overpass "nearby POI" merge (mapDiscovery.getDestinationList)
+    // is what caused "99 places" in the destination list and unrelated
+    // real shops/ATMs showing up as floating AR labels on real-device
+    // testing. Any OTHER destination by name still works via voice —
+    // handleDestinationRequest() falls back to routeProvider.geocode()
+    // (Nominatim) for anything not in this list, a completely separate
+    // code path from this nearby-POI feed. Re-enable the broader merge
+    // below (it's just commented out, not deleted) once the curated list
+    // itself is settled and worth layering more onto.
+    _renderDestinationList(campusPlaces);
+    ar && ar.setNearbyBuildings(campusPlaces, lat, lon);
+
+    // if (!mapDiscovery) mapDiscovery = new MapDiscovery();
+    // const mapPois = await mapDiscovery.getDestinationList(lat, lon);
+    // const merged = [...campusPlaces];
+    // const seen = new Set(campusPlaces.map((p) => p.name.toLowerCase()));
+    // for (const p of mapPois) {
+    //   const key = p.name.toLowerCase();
+    //   if (!seen.has(key)) { merged.push(p); seen.add(key); }
+    // }
+    // _renderDestinationList(merged);
+    // ar && ar.setNearbyBuildings(merged, lat, lon);
   } catch (err) {
     console.warn('Refresh POIs error:', err);
   }
