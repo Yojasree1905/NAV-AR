@@ -44,6 +44,7 @@ let mapDiscovery = null;
 let aiAssistant = null;
 let localizer = null;
 let miniMap = null;
+let webxrAr = null; // WebXrGroundAr instance, only ever active if the user explicitly opts in via the "AR Lock" button and the device actually supports it
 
 window.addEventListener('DOMContentLoaded', init);
 
@@ -70,6 +71,7 @@ function init() {
   els.repeatBtn          = document.getElementById('repeat-btn');
   els.nextLegBtn         = document.getElementById('next-leg-btn');
   els.stopBtn            = document.getElementById('stop-btn');
+  els.webxrArBtn         = document.getElementById('webxr-ar-btn');
 
   // Sidebar
   els.sidebar            = document.getElementById('settings-sidebar');
@@ -141,6 +143,7 @@ function init() {
   els.repeatBtn.addEventListener('click', repeatRoute);
   els.nextLegBtn.addEventListener('click', () => voice.speak('GPS tracks your position automatically.', { key: 'next-noop' }));
   els.stopBtn.addEventListener('click', handleStopRequested);
+  els.webxrArBtn.addEventListener('click', toggleWebXrAr);
   els.sidebarToggleBtn.addEventListener('click', () => toggleSidebar(true));
   els.sidebarCloseBtn?.addEventListener('click', () => toggleSidebar(false));
   els.sidebarBackdrop?.addEventListener('click', () => toggleSidebar(false));
@@ -531,6 +534,16 @@ async function startAssistant() {
   // Seed destination list with nearby POIs (in background)
   _refreshNearbyPois();
 
+  // WebXR true ground-locked AR — only reveal the button if a real
+  // feature check confirms support (ARCore-capable Android Chrome).
+  // Everywhere else this silently stays hidden and the app behaves
+  // exactly as it already does; nothing here changes default behavior.
+  if (typeof WebXrGroundAr !== 'undefined') {
+    WebXrGroundAr.isSupported().then((supported) => {
+      if (supported) els.webxrArBtn.classList.remove('hidden');
+    });
+  }
+
   // Hazard detector
   if (camStream && settings.hazardsEnabled) {
     hazards = new HazardDetector({
@@ -752,6 +765,15 @@ function _handleGpsUpdate(fix) {
   miniMap && miniMap.updateRemainingDistance(distToEnd);
   ar && ar.setRoute(route.polyline.slice(route.pointIndex), fix.lat, fix.lon, route.destLabel, distToEnd);
 
+  // Feed the same target bearing + compass heading to the WebXR ground-
+  // locked session, if one is active, so its ribbon points the same
+  // direction as the 2D path would.
+  if (webxrAr && webxrAr.session) {
+    const { initialBearing } = window.__venueHelpers;
+    webxrAr.setTargetBearing(initialBearing(fix.lat, fix.lon, nearLat, nearLon));
+    if (ar) webxrAr.setCompassHeading(ar.heading);
+  }
+
   // Arrival detection
   if (isFinal && distToNext <= arrivalRadius) {
     state.phase = 'arrived';
@@ -771,6 +793,67 @@ function _handleGpsUpdate(fix) {
       key: 'almost-there', cooldownMs: 8000,
     });
   }
+}
+
+/**
+ * Starts or stops the experimental WebXR ground-locked AR session.
+ * See webxr-ar.js's file header for the full honest status — this is
+ * unverified against real hardware, opt-in only, and any failure falls
+ * back cleanly to the existing tested 2D path with a clear spoken
+ * explanation, never a silent or broken state.
+ */
+async function toggleWebXrAr() {
+  if (webxrAr && webxrAr.session) {
+    await webxrAr.stop(); // triggers _restoreFrom2dFallback() via onSessionEnd below
+    return;
+  }
+
+  voice.speak('Starting ground-locked AR — this is experimental.', { key: 'webxr-starting', interrupt: true });
+  webxrAr = new WebXrGroundAr({
+    onError: (err) => {
+      voice.speak(
+        "Couldn't start ground-locked AR on this device — staying with the regular path view.",
+        { key: 'webxr-failed', interrupt: true }
+      );
+      console.warn('WebXR AR error:', err);
+    },
+    // Fires whenever the session ends for ANY reason — our own Exit
+    // button, the OS back-gesture, permission revoked, an unexpected
+    // termination. Restoring state here (not duplicated at the call
+    // site of stop()) means the app can never get stuck with the video
+    // hidden and no path drawn, regardless of why the session ended.
+    onSessionEnd: () => _restoreFrom2dFallback(),
+  });
+  const started = await webxrAr.start();
+  if (!started) {
+    webxrAr = null;
+    return;
+  }
+
+  // A real XR session is now rendering its own camera passthrough via
+  // dom-overlay — hide our separate <video> feed so they don't both
+  // show at once, and tell ar.js to stop drawing its own 2D path since
+  // webxr-ar.js's hit-test-anchored ribbon is handling that now. Every
+  // other bit of ar.js (building labels, hazard boxes) keeps running
+  // exactly as before, layered on top via dom-overlay.
+  if (els.video) els.video.classList.add('hidden');
+  if (ar) ar.externalPathActive = true;
+  els.webxrArBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg><span>Exit AR Lock</span>';
+  voice.speak('Ground-locked AR active. Say "exit AR" or tap the button again to go back.', {
+    key: 'webxr-on',
+    interrupt: true,
+  });
+}
+
+/** Restores normal 2D-canvas rendering after any WebXR AR session ends, whatever the reason. Safe to call even if a session was never really active. */
+function _restoreFrom2dFallback() {
+  webxrAr = null;
+  if (els.video) els.video.classList.remove('hidden');
+  if (ar) ar.externalPathActive = false;
+  if (els.webxrArBtn) {
+    els.webxrArBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l9 4.9v10.2L12 22l-9-4.9V6.9L12 2z"></path></svg><span>AR Lock</span>';
+  }
+  voice.speak('Ground-locked AR off.', { key: 'webxr-off', interrupt: true, cooldownMs: 500 });
 }
 
 function _handleGpsError() {

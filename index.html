@@ -86,6 +86,17 @@
         </svg>
         <span>End Route</span>
       </button>
+
+      <!-- Only shown if WebXR immersive-ar + hit-test is actually
+           detected as supported (ARCore-capable Android Chrome) —
+           hidden by default, revealed by JS after a real feature check,
+           never assumed. -->
+      <button id="webxr-ar-btn" class="pill-action-btn hidden" aria-label="Try true ground-locked AR (experimental)" title="Experimental — needs a compatible Android phone">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2l9 4.9v10.2L12 22l-9-4.9V6.9L12 2z"></path>
+        </svg>
+        <span>AR Lock</span>
+      </button>
     </div>
 
     <!-- Voice Orb / Central Mic Trigger -->
@@ -297,6 +308,7 @@
 <script src="js/voice.js"></script>
 <!-- AR canvas overlay (GPS route projection + hazard outlines) -->
 <script src="js/ar.js"></script>
+<script src="js/webxr-ar.js"></script>
 <!-- Hazard detector (COCO-SSD, on-device) -->
 <script src="js/hazards.js"></script>
 <!-- OpenAI AI assistant layer -->

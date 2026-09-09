@@ -39,6 +39,7 @@ class ArOverlay {
     this.currentLat = null;
     this.currentLon = null;
     this.routePolyline = null; // [[lat, lon], ...]
+    this.externalPathActive = false; // true while a WebXrGroundAr session is drawing the ground path itself — skip our own 2D path draw so they don't both render at once
     this.destLabel = '';
     this.distanceRemaining = null;
     this.activeDestination = null; // { name, lat, lon }
@@ -231,8 +232,11 @@ class ArOverlay {
       window.miniMap.updateCompass(heading);
     }
 
-    // 1. Perspective Road Pathway Overlay (Images 1 & 2)
-    if (this.routePolyline && this.currentLat !== null) {
+    // 1. Perspective Road Pathway Overlay (Images 1 & 2) — skipped while
+    // a WebXR ground-locked session (webxr-ar.js) is drawing the real
+    // hit-test-anchored path itself, so the two never draw on top of
+    // each other.
+    if (this.routePolyline && this.currentLat !== null && !this.externalPathActive) {
       this._drawRoadPathway(heading, w, h, topOffset, botOffset);
     }
 
