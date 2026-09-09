@@ -122,6 +122,16 @@ const CAMPUS_SURVEYED_POIS = [
     aliases: ['b block', 'hostel b', 'block b']
   },
   {
+    id: 'relation/20992887',
+    name: 'A Block',
+    lat: 12.9683037,
+    lon: 79.1583144,
+    type: 'dormitory',
+    purpose: 'Student Residence • A Block (7 Floors)',
+    tags: { 'building:levels': '7', name: 'A Block', building: 'dormitory' },
+    aliases: ['a block', 'hostel a', 'block a']
+  },
+  {
     id: 'way/93175156',
     name: 'EV Periyar Library',
     lat: 12.9693316,
