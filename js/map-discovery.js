@@ -104,6 +104,152 @@ const CAMPUS_SURVEYED_POIS = [
     purpose: 'Dining Hall & Meal Services for Residents',
     tags: { amenity: 'canteen' },
     aliases: ['mess', 'dining hall', 'mess entrance', 'food court']
+  },
+
+  // Extended from the wider campus survey (map.osm, ~353m x 622m bounding
+  // box) — real coordinates parsed directly from the OSM export, not
+  // hand-typed, to avoid transcription errors. Way centroids are the
+  // average of that building's outline nodes, same method used for
+  // G/H/J above.
+  {
+    id: 'way/370766286',
+    name: 'B Block',
+    lat: 12.9679410,
+    lon: 79.1581289,
+    type: 'dormitory',
+    purpose: 'Student Residence • B Block (7 Floors)',
+    tags: { 'building:levels': '7', name: 'B Block', building: 'dormitory' },
+    aliases: ['b block', 'hostel b', 'block b']
+  },
+  {
+    id: 'way/93175156',
+    name: 'EV Periyar Library',
+    lat: 12.9693316,
+    lon: 79.1568478,
+    type: 'library',
+    purpose: 'Central Library • 3 Floors',
+    tags: { amenity: 'library', 'building:levels': '3', name: 'EV Periyar Library' },
+    aliases: ['library', 'periyar library', 'central library']
+  },
+  {
+    id: 'way/1548342976',
+    name: 'Anna Auditorium',
+    lat: 12.9699782,
+    lon: 79.1556379,
+    type: 'auditorium',
+    purpose: 'Conference & Event Auditorium',
+    tags: { amenity: 'conference_centre', name: 'Anna Auditorium' },
+    aliases: ['anna auditorium', 'auditorium', 'anna audi']
+  },
+  {
+    id: 'way/370765052',
+    name: 'Health Centre',
+    lat: 12.9695284,
+    lon: 79.1546460,
+    type: 'hospital',
+    purpose: 'Campus Hospital (Sri Narayani Hospital & Research Centre)',
+    tags: { amenity: 'hospital', healthcare: 'hospital', name: 'Health Centre' },
+    aliases: ['health centre', 'health center', 'hospital', 'medical centre', 'clinic']
+  },
+  {
+    id: 'way/370764917',
+    name: 'CDMM Building',
+    lat: 12.9692179,
+    lon: 79.1549807,
+    type: 'college',
+    purpose: 'Academic Building — CDMM',
+    tags: { building: 'college', name: 'CDMM Building' },
+    aliases: ['cdmm', 'cdmm building']
+  },
+  {
+    id: 'way/93175045',
+    name: 'CS Hall',
+    lat: 12.9701567,
+    lon: 79.1557119,
+    type: 'building',
+    purpose: 'Academic / Event Hall — CS Hall',
+    tags: { building: 'yes', name: 'CS Hall' },
+    aliases: ['cs hall']
+  },
+  {
+    id: 'way/93127404',
+    name: 'VIT Univ Estates Office & CTS',
+    lat: 12.9701936,
+    lon: 79.1562660,
+    type: 'college',
+    purpose: 'Estates Office & Campus Technical Services',
+    tags: { building: 'college', name: 'VIT Univ Estates Office & CTS' },
+    aliases: ['estates office', 'cts office']
+  },
+  {
+    id: 'way/556538991',
+    name: 'Food Court',
+    lat: 12.9700197,
+    lon: 79.1589702,
+    type: 'restaurant',
+    purpose: 'Campus Food Court',
+    tags: { amenity: 'restaurant', name: 'Food Court' },
+    aliases: ['food court', 'the food court']
+  },
+  {
+    id: 'way/556538990',
+    name: 'DC Bakery',
+    lat: 12.9700742,
+    lon: 79.1588762,
+    type: 'cafe',
+    purpose: 'Bakery & Cafe',
+    tags: { amenity: 'cafe', name: 'DC Bakery' },
+    aliases: ['dc bakery', 'bakery']
+  },
+  {
+    id: 'node/1619807760',
+    name: 'HDFC Bank ATM',
+    lat: 12.9697492,
+    lon: 79.1551859,
+    type: 'atm',
+    purpose: 'HDFC Bank ATM • 24/7 Cash Withdrawal',
+    tags: { amenity: 'atm', brand: 'HDFC Bank', name: 'HDFC Bank' },
+    aliases: ['hdfc', 'hdfc bank', 'hdfc atm']
+  },
+  {
+    id: 'node/1064558843',
+    name: 'Indian Bank',
+    lat: 12.9699373,
+    lon: 79.1543436,
+    type: 'bank',
+    purpose: 'Indian Bank Branch & ATM',
+    tags: { amenity: 'bank', brand: 'Indian Bank', name: 'Indian Bank' },
+    aliases: ['indian bank']
+  },
+  {
+    id: 'way/570870179',
+    name: 'Kalpana Chawla Ground',
+    lat: 12.9684196,
+    lon: 79.1565637,
+    type: 'park',
+    purpose: 'Open Ground for Casual Activities',
+    tags: { leisure: 'park', name: 'Kalpana Chawla Ground' },
+    aliases: ['kalpana chawla ground', 'the ground', 'flag ground']
+  },
+  {
+    id: 'way/149737160',
+    name: 'VIT Lake',
+    lat: 12.9697059,
+    lon: 79.1604820,
+    type: 'water',
+    purpose: 'Campus Lake',
+    tags: { natural: 'water', name: 'VIT Lake' },
+    aliases: ['vit lake', 'the lake']
+  },
+  {
+    id: 'node/1619807763',
+    name: 'Main Gate Fountain',
+    lat: 12.9686493,
+    lon: 79.1559337,
+    type: 'landmark',
+    purpose: 'Fountain Landmark near Main Gate',
+    tags: { amenity: 'fountain', name: 'Main Gate Fountain' },
+    aliases: ['main gate fountain', 'the fountain']
   }
 ];
 
