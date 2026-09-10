@@ -228,7 +228,13 @@ function init() {
 // Auto camera — starts live view immediately without needing mic tap
 // ------------------------------------------------------------------
 async function _autoStartCamera() {
-  await ArOverlay.requestPermission();
+  // NOTE: iOS Safari requires DeviceOrientationEvent.requestPermission()
+  // to be called synchronously within a direct user gesture (a tap
+  // handler) — calling it here, during automatic page load with no user
+  // gesture, silently fails on iOS and compass data never arrives. Only
+  // request it here on platforms that don't need a gesture (i.e. where
+  // the check below is skipped entirely); the real request now happens
+  // in the mic tap handler instead, see onMicTapped().
   try {
     camStream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
@@ -479,9 +485,19 @@ async function startAssistant() {
   setStatus('Starting…');
   if (els.voiceHint) els.voiceHint.textContent = 'Activating assistant…';
 
+  // This MUST run here, unconditionally, on every call — startAssistant()
+  // is only ever invoked from onMicTapped(), a real user tap, which is
+  // exactly the gesture context iOS Safari requires for
+  // DeviceOrientationEvent.requestPermission() to work at all. It used
+  // to live inside the `if (!camStream)` block below, which meant it
+  // silently never ran once _autoStartCamera() had already started the
+  // camera on page load — compass permission was then never requested on
+  // iOS. Harmless to call again if already granted (Android doesn't
+  // implement this API at all, so this is a no-op there).
+  await ArOverlay.requestPermission();
+
   // Camera & AR — skip if already started by _autoStartCamera()
   if (!camStream) {
-    await ArOverlay.requestPermission();
     try {
       camStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },

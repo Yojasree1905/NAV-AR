@@ -221,10 +221,19 @@ class ArOverlay {
     const topOffset = (document.getElementById('top-bar')?.offsetHeight || 64) + 10;
     const botOffset = (document.getElementById('voice-hub')?.offsetHeight || 130) + 10;
 
-    // Resolve current compass heading
+    // Resolve current compass heading. Falling back to 0 (true north)
+    // used to happen silently here whenever the compass had no data at
+    // all — meaning the app would quietly assume you're facing true
+    // north and compute every building's on-screen position from that
+    // wrong assumption, with no visible warning. That's very likely why
+    // this looked like "the compass isn't working at all": everything
+    // *appeared* misaligned because it was being computed from a fake
+    // heading, not because the underlying sensor code was broken. Now
+    // this is explicit and visible instead of silent.
     let heading = this.heading;
-    if (heading === null) {
-      heading = 0; // Default to true North if compass not yet active
+    if (!this.hasLiveHeading || heading === null) {
+      heading = 0;
+      this._drawNoCompassNotice(w, topOffset);
     }
 
     // -- Update mini-compass --
@@ -248,6 +257,17 @@ class ArOverlay {
       this._drawDetectionOutlines(w, h);
     }
 
+    // 4. Persistent debug readout (hazard model status, live compass
+    // heading) — was being set via setDebugInfo() but the actual draw
+    // call for it had been dropped somewhere in an earlier rewrite, so
+    // it was silently never visible. Restored, and now always includes
+    // live heading so "is the compass working" is directly checkable
+    // from a screenshot instead of something to guess at.
+    const compassLine = this.hasLiveHeading
+      ? `Compass: ${Math.round(this.heading)}°`
+      : 'Compass: NO SIGNAL (assuming north)';
+    this._drawDebugInfo(w, h, this.debugInfo ? `${compassLine} | ${this.debugInfo}` : compassLine);
+
     // 4. Ambient bubble
     if (this.bubbleText) {
       this._drawBubble(w, topOffset);
@@ -259,6 +279,47 @@ class ArOverlay {
   // ------------------------------------------------------------------
   // 1. Perspective Road Pathway Ribbon (Images 1 & 2)
   // ------------------------------------------------------------------
+  /** Small, unmissable warning drawn near the top of the frame whenever the compass has no live data — replaces the old silent "just assume north" fallback so a misaligned display is explained, not mysterious. */
+  _drawNoCompassNotice(w, topOffset) {
+    const { ctx } = this;
+    ctx.save();
+    ctx.font = '700 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const text = '⚠ No compass signal — assuming you face north';
+    const textW = ctx.measureText(text).width;
+    const boxW = textW + 20;
+    const boxH = 24;
+    const boxX = w / 2 - boxW / 2;
+    const boxY = topOffset;
+    ctx.beginPath();
+    if (typeof ctx.roundRect === 'function') ctx.roundRect(boxX, boxY, boxW, boxH, 6);
+    else ctx.rect(boxX, boxY, boxW, boxH);
+    ctx.fillStyle = 'rgba(180, 60, 40, 0.9)';
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.fillText(text, w / 2, boxY + boxH / 2 + 1);
+    ctx.restore();
+  }
+
+  /** Persistent bottom-left debug readout (compass heading, hazard model status) — developer/tester-visible, not meant to be pretty, so real-device issues are diagnosable from a screenshot instead of a guess. */
+  _drawDebugInfo(w, h, text) {
+    const { ctx } = this;
+    ctx.save();
+    ctx.font = '600 11px monospace';
+    const paddingX = 6;
+    const textW = ctx.measureText(text).width;
+    const boxH = 18;
+    const y = h - boxH - 8;
+    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+    ctx.fillRect(6, y, textW + paddingX * 2, boxH);
+    ctx.fillStyle = '#0f0';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, 6 + paddingX, y + boxH / 2 + 1);
+    ctx.restore();
+  }
+
   _drawRoadPathway(heading, w, h, topOffset, botOffset) {
     const { ctx } = this;
     const polyline = this.routePolyline;
