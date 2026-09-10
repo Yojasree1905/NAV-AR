@@ -448,12 +448,21 @@ class ArOverlay {
   _drawLandmarkReticles(heading, w, h, topOffset, botOffset) {
     if (this.currentLat === null || this.currentLon === null) return;
     const halfFov = this.fovH / 2;
-    const MAX_VISIBLE_DISTANCE = 200;
+    // Reduced from 200m after a report that labels were showing for
+    // buildings too far away to actually be meaningfully "on camera" —
+    // a phone camera can't really resolve a specific building's identity
+    // much past this range anyway, and it was cluttering the view.
+    // Destination gets a bit more headroom than incidental buildings:
+    // you still want to see your actual nav target as you approach, even
+    // if it's a little past the point of being clearly recognizable,
+    // since that's useful progress information, not just identification.
+    const MAX_DEST_DISTANCE = 120;
+    const MAX_INCIDENTAL_DISTANCE = 60;
 
     let destTarget = null;
     if (this.activeDestination && this.activeDestination.lat != null) {
       const dist = _haversine(this.currentLat, this.currentLon, this.activeDestination.lat, this.activeDestination.lon);
-      if (dist <= MAX_VISIBLE_DISTANCE) {
+      if (dist <= MAX_DEST_DISTANCE) {
         destTarget = {
           id: 'dest', name: this.activeDestination.name, lat: this.activeDestination.lat,
           lon: this.activeDestination.lon, purpose: this.activeDestination.purpose || '', dist, isDest: true,
@@ -464,7 +473,7 @@ class ArOverlay {
     const others = this.nearbyBuildings
       .filter((b) => b.lat && b.lon && (!destTarget || b.name !== destTarget.name))
       .map((b) => ({ ...b, id: b.id || b.name, dist: _haversine(this.currentLat, this.currentLon, b.lat, b.lon) }))
-      .filter((b) => b.dist <= MAX_VISIBLE_DISTANCE);
+      .filter((b) => b.dist <= MAX_INCIDENTAL_DISTANCE);
 
     const allTargets = destTarget ? [destTarget, ...others] : others;
     if (!allTargets.length) return;

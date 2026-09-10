@@ -66,6 +66,8 @@
     foodys:      { lat: 12.9690152, lon: 79.1583048 }, // way/93175238
     health_centre: { lat: 12.9695284, lon: 79.1546460 }, // way/370765052
     anna_auditorium: { lat: 12.9699782, lon: 79.1556379 }, // way/1548342976
+    mens_a_block: { lat: 12.9683037, lon: 79.1583144 }, // relation/20992887 — Men's Hostel A Block (43-point outer-ring centroid, verified against two separate exports)
+    mens_b_block: { lat: 12.9679410, lon: 79.1581289 }, // way/370766286 — Men's Hostel B Block
   };
 
   const NODES = [
@@ -80,6 +82,8 @@
     gpsNode('smv', 'Sir M Visvesvaraya Block', ['smv', 'sir m visvesvaraya block', 'smv block'], true, 'Academic Building • SMV Block (2 Floors)'),
     gpsNode('library', 'Library', ['library', 'ev periyar library', 'the library'], true, 'EV Periyar Library'),
     gpsNode('main_block', 'Main Block', ['main block', 'main building'], true, 'University Main Building (3 Floors)'),
+    gpsNode('mens_a_block', 'A Block', ['a block', 'block a', "men's hostel a", 'mens a block'], true, "Men's Hostel A Block (7 Floors)"),
+    gpsNode('mens_b_block', 'B Block', ['b block', 'block b', "men's hostel b", 'mens b block'], true, "Men's Hostel B Block (7 Floors)"),
     gpsNode('foodys', 'Foodys', ['foodys', 'foody\'s'], true, 'Campus Food Shelter'),
     gpsNode('health_centre', 'Health Centre', ['health centre', 'health center', 'hospital', 'medical centre'], true, 'Sri Narayani Hospital and Research Centre'),
     gpsNode('anna_auditorium', 'Anna Auditorium', ['anna auditorium', 'auditorium', 'anna audi'], true, 'Conference & Event Auditorium'),
