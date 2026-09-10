@@ -31,9 +31,11 @@ class ArOverlay {
     // Orientation
     this.heading = null;
     this.hasLiveHeading = false;
+    this.headingSource = null; // 'sensor-api' | 'deviceorientation' | null — which method actually delivered a reading, shown in the debug readout
     this.pitch = null; // device tilt (beta), for making the path respond to how the phone is actually held
     this._pitchBaseline = null; // calibrated from the first several readings, since people hold phones at different natural angles
     this._pitchSamples = [];
+    this._absOrientationSensor = null;
 
     // GPS & Navigation
     this.currentLat = null;
@@ -80,6 +82,18 @@ class ArOverlay {
   }
 
   start() {
+    // Try the Generic Sensor API's AbsoluteOrientationSensor first — a
+    // fundamentally different browser API from the older deviceorientation
+    // events, fusing the magnetometer/gyroscope/accelerometer itself
+    // rather than relying on the browser to package a single 'compass
+    // heading' number. Worth trying as a genuine alternative source on
+    // devices where deviceorientation reports no data at all. Support is
+    // real but inconsistent across Android browsers/OS versions, so this
+    // always falls back to the existing deviceorientation listeners
+    // (kept active regardless) if it's unavailable or fails for any
+    // reason — never a device's only path to a working compass.
+    this._startAbsoluteOrientationSensor();
+
     window.addEventListener('deviceorientationabsolute', this._onOrientation, true);
     window.addEventListener('deviceorientation', this._onOrientation, true);
     // The canvas itself has pointer-events:none (so taps pass through to
@@ -93,12 +107,59 @@ class ArOverlay {
     this._raf();
   }
 
+  /**
+   * Attempts to use AbsoluteOrientationSensor as the preferred heading
+   * source. Requires HTTPS (already true on GitHub Pages) and, on
+   * Chrome, the 'accelerometer', 'gyroscope', and 'magnetometer'
+   * Permissions-Policy features to be allowed for the top-level page
+   * (true by default unless a site explicitly restricts them, which
+   * this one doesn't). Every failure path here is caught and simply
+   * leaves the existing deviceorientation listeners as the working
+   * fallback — this function is not allowed to leave the app worse off
+   * than before if it doesn't work.
+   */
+  async _startAbsoluteOrientationSensor() {
+    if (typeof AbsoluteOrientationSensor === 'undefined') return;
+    try {
+      const results = await Promise.all(
+        ['accelerometer', 'gyroscope', 'magnetometer'].map((name) =>
+          navigator.permissions.query({ name }).catch(() => ({ state: 'unknown' }))
+        )
+      );
+      if (results.some((r) => r.state === 'denied')) return;
+
+      const sensor = new AbsoluteOrientationSensor({ frequency: 10, referenceFrame: 'screen' });
+      sensor.addEventListener('reading', () => {
+        const heading = _quaternionToHeadingDeg(sensor.quaternion);
+        if (heading !== null) {
+          this.heading = heading;
+          this.hasLiveHeading = true;
+          this.headingSource = 'sensor-api';
+        }
+      });
+      sensor.addEventListener('error', (e) => {
+        console.warn('AbsoluteOrientationSensor error, falling back to deviceorientation:', e.error?.name || e);
+        if (this.headingSource === 'sensor-api') {
+          this.headingSource = null; // let _onOrientation's deviceorientation readings take back over
+        }
+      });
+      sensor.start();
+      this._absOrientationSensor = sensor;
+    } catch (err) {
+      console.warn('AbsoluteOrientationSensor unavailable, using deviceorientation:', err.name || err);
+    }
+  }
+
   stop() {
     window.removeEventListener('deviceorientationabsolute', this._onOrientation, true);
     window.removeEventListener('deviceorientation', this._onOrientation, true);
     const videoEl = document.getElementById('camera');
     if (videoEl) videoEl.removeEventListener('click', this._onTap);
     if (this._rafId) cancelAnimationFrame(this._rafId);
+    if (this._absOrientationSensor) {
+      try { this._absOrientationSensor.stop(); } catch (_) { /* already stopped */ }
+      this._absOrientationSensor = null;
+    }
   }
 
   _onTap(e) {
@@ -162,15 +223,22 @@ class ArOverlay {
   clearTarget() { this.clearRoute(); }
 
   _onOrientation(e) {
-    if (typeof e.webkitCompassHeading === 'number') {
-      this.heading = e.webkitCompassHeading;
-      this.hasLiveHeading = true;
-    } else if (e.absolute && e.alpha !== null) {
-      this.heading = (360 - e.alpha) % 360;
-      this.hasLiveHeading = true;
-    } else if (e.alpha !== null) {
-      this.heading = (360 - e.alpha) % 360;
-      this.hasLiveHeading = true;
+    // If AbsoluteOrientationSensor is actively delivering readings,
+    // don't also apply deviceorientation's heading on top of it — two
+    // different heading sources updating the same value every frame
+    // would fight and jitter. deviceorientation still silently takes
+    // back over automatically if the sensor API's error handler clears
+    // headingSource (see _startAbsoluteOrientationSensor above).
+    if (this.headingSource !== 'sensor-api') {
+      if (typeof e.webkitCompassHeading === 'number') {
+        this.heading = e.webkitCompassHeading;
+        this.hasLiveHeading = true;
+        this.headingSource = 'deviceorientation';
+      } else if (e.alpha !== null) {
+        this.heading = (360 - e.alpha) % 360;
+        this.hasLiveHeading = true;
+        this.headingSource = 'deviceorientation';
+      }
     }
 
     // Pitch (beta): front-back tilt, 0=flat face-up, ~90=held upright.
@@ -263,8 +331,9 @@ class ArOverlay {
     // it was silently never visible. Restored, and now always includes
     // live heading so "is the compass working" is directly checkable
     // from a screenshot instead of something to guess at.
+    const sourceTag = this.headingSource === 'sensor-api' ? ' [sensor-api]' : this.headingSource === 'deviceorientation' ? ' [deviceorientation]' : '';
     const compassLine = this.hasLiveHeading
-      ? `Compass: ${Math.round(this.heading)}°`
+      ? `Compass: ${Math.round(this.heading)}°${sourceTag}`
       : 'Compass: NO SIGNAL (assuming north)';
     this._drawDebugInfo(w, h, this.debugInfo ? `${compassLine} | ${this.debugInfo}` : compassLine);
 
@@ -760,6 +829,27 @@ class ArOverlay {
 // ------------------------------------------------------------------
 // Geometry Helpers
 // ------------------------------------------------------------------
+
+/**
+ * Converts an AbsoluteOrientationSensor quaternion [x, y, z, w] (with
+ * referenceFrame: 'screen') into a compass heading in degrees, where
+ * 0 = the top of the screen pointing toward magnetic/true north
+ * (matching the same convention as _onOrientation's deviceorientation-
+ * based heading, so both sources are interchangeable to the rest of
+ * this file). Standard quaternion-to-yaw extraction (rotation about the
+ * Z axis), then converted from math-standard "counter-clockwise from
+ * east" to compass-standard "clockwise from north". Returns null for a
+ * malformed reading rather than a wrong number.
+ */
+function _quaternionToHeadingDeg(q) {
+  if (!q || q.length < 4) return null;
+  const [x, y, z, w] = q;
+  const yawRad = Math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z));
+  let headingDeg = 90 - (yawRad * 180) / Math.PI;
+  headingDeg = ((headingDeg % 360) + 360) % 360;
+  return headingDeg;
+}
+
 function _haversine(lat1, lon1, lat2, lon2) {
   const R = 6371000;
   const toR = (d) => (d * Math.PI) / 180;
