@@ -218,6 +218,26 @@ const CAMPUS_SURVEYED_POIS = [
     tags: { building: 'yes', name: 'Mahatma Gandhi Block (MGB)' },
     aliases: ['mgb', 'mahatma gandhi block'],
   },
+  {
+    id: 'way/1530184785',
+    name: '3A Gate',
+    lat: 12.9676309,
+    lon: 79.1585197,
+    type: 'gate',
+    purpose: 'Campus Entry Gate 3A',
+    tags: { building: 'yes', name: '3A Gate' },
+    aliases: ['3a gate', 'third a gate', 'gate 3a'],
+  },
+  {
+    id: 'way/1555145366',
+    name: 'Main University Gate',
+    lat: 12.9683509,
+    lon: 79.1556778,
+    type: 'gate',
+    purpose: 'Main University Entrance Gate',
+    tags: { building: 'yes', name: 'Main Gate UNI Entrance' },
+    aliases: ['main entrance', 'university gate', 'main university gate', 'uni entrance', 'uni gate'],
+  },
 ];
 
 class MapDiscovery {
