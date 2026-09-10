@@ -37,20 +37,27 @@ const OVERPASS_FILTERS = [
 // Coordinates match outdoor-hostels.js (walkway entry nodes, not building centroids)
 const CAMPUS_SURVEYED_POIS = [
   {
-    id: 'node/14093702529',
+    // Node/coordinate corrected 2026-09-10: this node had been mislabeled
+    // "H Block" — it's actually the entry point closest to G Block. See
+    // outdoor-hostels.js's header comment for how this was verified
+    // (geographic distance check against the corrected OSM building
+    // outlines) before swapping.
+    id: 'node/14165878673',
     name: 'G Block',
-    lat: 12.9677686,
-    lon: 79.1593426,
+    lat: 12.9681514,
+    lon: 79.1595125,
     type: 'dormitory',
     purpose: 'Ladies Hostel G • Student Residence (17 Floors)',
     tags: { building: 'dormitory', name: 'G Block' },
     aliases: ['hostel g', 'g hostel', 'ladies hostel g', 'block g', 'socrates'],
   },
   {
-    id: 'node/14165878673',
+    // Node/coordinate corrected 2026-09-10: this node had been mislabeled
+    // "G Block" — it's actually the entry point closest to H Block.
+    id: 'node/14093702529',
     name: 'H Block',
-    lat: 12.9681514,
-    lon: 79.1595125,
+    lat: 12.9677686,
+    lon: 79.1593426,
     type: 'dormitory',
     purpose: 'Ladies Hostel H • Student Residence (17 Floors)',
     tags: { building: 'dormitory', name: 'H Block' },
@@ -87,14 +94,100 @@ const CAMPUS_SURVEYED_POIS = [
     aliases: ['shop', 'store', 'the shop', 'snacks', 'convenience store'],
   },
 
-  // Scoped down to just this set for now (2026-09-09) — the wider campus
-  // list (A/B Block, Library, Auditorium, Health Centre, banks, etc.)
-  // and the live Overpass "nearby POI" merge are what caused "99 places"
-  // to show up in the destination list and as floating AR labels on
-  // real-device testing. That wider list is preserved in git history
-  // (see the commit that added map.osm-derived entries) if you want to
-  // bring some of it back later — easiest to re-add a few at a time
-  // rather than all 15 at once, to keep the destination list purposeful.
+  // Wider-campus buildings, added 2026-09-10 per explicit request to
+  // scope the recognized-building list to exactly this set (kept in
+  // sync with the same 9 entries in outdoor-hostels.js). Real
+  // coordinates from the campus-wide OSM export.
+  {
+    id: 'relation/21134208',
+    name: 'Technology Tower',
+    lat: 12.9706484,
+    lon: 79.1594702,
+    type: 'university',
+    purpose: 'Academic Building • Technology Tower (7 Floors)',
+    tags: { building: 'university', name: 'Technology Tower' },
+    aliases: ['technology tower', 'tech tower', 'tt'],
+  },
+  {
+    id: 'relation/20995799',
+    name: 'Silver Jubilee Tower',
+    lat: 12.9710043,
+    lon: 79.1638453,
+    type: 'university',
+    purpose: 'Academic Building • SJT (9 Floors)',
+    tags: { building: 'university', name: 'Silver Jubilee Tower' },
+    aliases: ['sjt', 'silver jubilee tower'],
+  },
+  {
+    id: 'way/1542862452',
+    name: 'Perl Research Park',
+    lat: 12.9712457,
+    lon: 79.1662772,
+    type: 'university',
+    purpose: 'Research Building • PRP (8 Floors)',
+    tags: { building: 'university', name: 'Perl Research Park' },
+    aliases: ['prp', 'perl research park', 'research park'],
+  },
+  {
+    id: 'relation/20827200',
+    name: 'Sir M Visvesvaraya Block',
+    lat: 12.9691421,
+    lon: 79.1577164,
+    type: 'university',
+    purpose: 'Academic Building • SMV Block (2 Floors)',
+    tags: { building: 'university', name: 'Sir M Visvesvaraya Block', short_name: 'SMV Block' },
+    aliases: ['smv', 'sir m visvesvaraya block', 'smv block'],
+  },
+  {
+    id: 'way/93175156',
+    name: 'Library',
+    lat: 12.9693316,
+    lon: 79.1568478,
+    type: 'library',
+    purpose: 'EV Periyar Library',
+    tags: { amenity: 'library', name: 'EV Periyar Library' },
+    aliases: ['library', 'ev periyar library', 'the library'],
+  },
+  {
+    id: 'relation/14938176',
+    name: 'Main Block',
+    lat: 12.9692257,
+    lon: 79.1558494,
+    type: 'university',
+    purpose: 'University Main Building (3 Floors)',
+    tags: { building: 'university', name: 'Main Building' },
+    aliases: ['main block', 'main building'],
+  },
+  {
+    id: 'way/93175238',
+    name: 'Foodys',
+    lat: 12.9690152,
+    lon: 79.1583048,
+    type: 'shelter',
+    purpose: 'Campus Food Shelter',
+    tags: { amenity: 'shelter', name: 'Foodys' },
+    aliases: ['foodys', "foody's"],
+  },
+  {
+    id: 'way/370765052',
+    name: 'Health Centre',
+    lat: 12.9695284,
+    lon: 79.1546460,
+    type: 'hospital',
+    purpose: 'Sri Narayani Hospital and Research Centre',
+    tags: { amenity: 'hospital', name: 'Health Centre' },
+    aliases: ['health centre', 'health center', 'hospital', 'medical centre'],
+  },
+  {
+    id: 'way/1548342976',
+    name: 'Anna Auditorium',
+    lat: 12.9699782,
+    lon: 79.1556379,
+    type: 'conference_centre',
+    purpose: 'Conference & Event Auditorium',
+    tags: { amenity: 'conference_centre', name: 'Anna Auditorium' },
+    aliases: ['anna auditorium', 'auditorium', 'anna audi'],
+  },
 ];
 
 class MapDiscovery {
