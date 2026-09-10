@@ -68,6 +68,7 @@
     anna_auditorium: { lat: 12.9699782, lon: 79.1556379 }, // way/1548342976
     ladies_a_block: { lat: 12.9683037, lon: 79.1583144 }, // relation/20992887 — Ladies Hostel A Block (43-point outer-ring centroid, verified against two separate exports)
     ladies_b_block: { lat: 12.9679410, lon: 79.1581289 }, // way/370766286 — Ladies Hostel B Block
+    mgb: { lat: 12.9721148, lon: 79.1678485 }, // way/741165347 — Mahatma Gandhi Block
   };
 
   const NODES = [
@@ -84,6 +85,7 @@
     gpsNode('main_block', 'Main Block', ['main block', 'main building'], true, 'University Main Building (3 Floors)'),
     gpsNode('ladies_a_block', 'A Block', ['a block', 'block a', 'ladies hostel a', 'ladies a block'], true, 'Ladies Hostel A Block (7 Floors)'),
     gpsNode('ladies_b_block', 'B Block', ['b block', 'block b', 'ladies hostel b', 'ladies b block'], true, 'Ladies Hostel B Block (7 Floors)'),
+    gpsNode('mgb', 'Mahatma Gandhi Block', ['mgb', 'mahatma gandhi block'], true, 'Academic Building • MGB'),
     gpsNode('foodys', 'Foodys', ['foodys', 'foody\'s'], true, 'Campus Food Shelter'),
     gpsNode('health_centre', 'Health Centre', ['health centre', 'health center', 'hospital', 'medical centre'], true, 'Sri Narayani Hospital and Research Centre'),
     gpsNode('anna_auditorium', 'Anna Auditorium', ['anna auditorium', 'auditorium', 'anna audi'], true, 'Conference & Event Auditorium'),

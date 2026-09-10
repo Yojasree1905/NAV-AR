@@ -208,6 +208,16 @@ const CAMPUS_SURVEYED_POIS = [
     tags: { building: 'dormitory', name: 'B Block' },
     aliases: ['b block', 'block b', 'ladies hostel b', 'ladies b block'],
   },
+  {
+    id: 'way/741165347',
+    name: 'Mahatma Gandhi Block',
+    lat: 12.9721148,
+    lon: 79.1678485,
+    type: 'university',
+    purpose: 'Academic Building • MGB',
+    tags: { building: 'yes', name: 'Mahatma Gandhi Block (MGB)' },
+    aliases: ['mgb', 'mahatma gandhi block'],
+  },
 ];
 
 class MapDiscovery {
