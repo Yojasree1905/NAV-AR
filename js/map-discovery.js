@@ -97,6 +97,16 @@ const CAMPUS_SURVEYED_POIS = [
     tags: { shop: 'convenience', name: 'Convenience Store' },
     aliases: ['shop', 'store', 'the shop', 'snacks', 'convenience store'],
   },
+  {
+    id: 'node/14165878671',
+    name: 'J Block Main Entrance',
+    lat: 12.9683346,
+    lon: 79.1594027,
+    type: 'dormitory',
+    purpose: 'Ladies Hostel J • Main Entrance',
+    tags: { building: 'dormitory', name: 'J Block Main Entrance' },
+    aliases: ['j block main entrance', 'j main entrance', 'main entrance j block'],
+  },
 
   // Wider-campus buildings, added 2026-09-10 per explicit request to
   // scope the recognized-building list to exactly this set (kept in

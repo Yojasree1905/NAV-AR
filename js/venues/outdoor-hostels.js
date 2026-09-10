@@ -48,6 +48,7 @@
     hostel_g:          { lat: 12.9681514, lon: 79.1595125 }, // OSM 14165878673 — was mislabeled "H Block West Entrance", corrected 2026-09-10
     hostel_h:          { lat: 12.9677686, lon: 79.1593426 }, // OSM 14093702529 — was mislabeled "G Block North Entrance", corrected 2026-09-10
     hostel_j:          { lat: 12.9679849, lon: 79.1591590 }, // OSM 14165878669 — J Block South Foyer (unaffected by the G/H swap)
+    j_main_entrance:   { lat: 12.9683346, lon: 79.1594027 }, // OSM 14165878671 — J Block North-East Bend, confirmed by user as the actual main entrance (2026-09-10); the existing "J Block" point (South Foyer) is the side entrance and was deliberately left unchanged
     main_gate:         { lat: 12.9683659, lon: 79.1595077 }, // OSM 14165878674 — "security point & main gate for hostels" (repositioned + renamed 2026-09-09)
     convenience_store: { lat: 12.9679250, lon: 79.1595513 }, // Real GPS-walked coordinate from early on-site calibration (two independent walks, accuracy-weighted) — NOT the OSM crossroad node 14165878672, which route-provider.js's own walkway graph separately and correctly labels "Crossroad between J & H". That node had been mistakenly reused as the Convenience Store's coordinate, making the two indistinguishable on screen. Corrected 2026-09-10.
 
@@ -77,6 +78,7 @@
     gpsNode('hostel_g',   'G Block', ['g block', 'hostel g', 'block g', 'ladies hostel g', 'g hostel', 'socrates'], true, 'Ladies Hostel G • Student Residence (17 Floors)'),
     gpsNode('hostel_h',   'H Block', ['h block', 'hostel h', 'block h', 'ladies hostel h', 'h hostel'],             true, 'Ladies Hostel H • Student Residence (17 Floors)'),
     gpsNode('hostel_j',   'J Block', ['j block', 'hostel j', 'block j', 'ladies hostel j', 'j hostel'],             true, 'Ladies Hostel J • Student Residence (17 Floors)'),
+    gpsNode('j_main_entrance', 'J Block Main Entrance', ['j block main entrance', 'j main entrance', 'main entrance j block'], true, 'Ladies Hostel J • Main Entrance'),
     gpsNode('main_gate',  'Main Gate', ['main gate', 'the gate', 'hostel gate', 'security gate', 'gate'],           true, 'Hostel Complex Entry & Security Checkpoint'),
     gpsNode('convenience_store', 'Convenience Store', ['shop', 'store', 'convenience store', 'the shop', 'snacks'], true, 'Convenience Store near J Block'),
     gpsNode('tech_tower', 'Technology Tower', ['technology tower', 'tech tower', 'tt'], true, 'Academic Building • Technology Tower (7 Floors)'),
