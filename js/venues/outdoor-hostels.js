@@ -49,7 +49,7 @@
     hostel_h:          { lat: 12.9677686, lon: 79.1593426 }, // OSM 14093702529 — was mislabeled "G Block North Entrance", corrected 2026-09-10
     hostel_j:          { lat: 12.9679849, lon: 79.1591590 }, // OSM 14165878669 — J Block South Foyer (unaffected by the G/H swap)
     main_gate:         { lat: 12.9683659, lon: 79.1595077 }, // OSM 14165878674 — "security point & main gate for hostels" (repositioned + renamed 2026-09-09)
-    convenience_store: { lat: 12.9681441, lon: 79.1594053 }, // OSM 14165878672 — Crossroad near J Block
+    convenience_store: { lat: 12.9679250, lon: 79.1595513 }, // Real GPS-walked coordinate from early on-site calibration (two independent walks, accuracy-weighted) — NOT the OSM crossroad node 14165878672, which route-provider.js's own walkway graph separately and correctly labels "Crossroad between J & H". That node had been mistakenly reused as the Convenience Store's coordinate, making the two indistinguishable on screen. Corrected 2026-09-10.
 
     // Wider-campus buildings, added 2026-09-10 per explicit request to
     // scope the recognized-building list to exactly this set. Real

@@ -84,10 +84,14 @@ const CAMPUS_SURVEYED_POIS = [
     aliases: ['main gate', 'hostel gate', 'the gate', 'security gate', 'gate', 'security point'],
   },
   {
-    id: 'node/14165878672',
+    // Real GPS-walked coordinate (see outdoor-hostels.js for the full
+    // explanation) -- was previously reusing OSM node 14165878672, which
+    // is actually route-provider.js's "Crossroad between J & H" waypoint,
+    // not the shop. Corrected 2026-09-10.
+    id: 'gps-walked/convenience-store-north',
     name: 'Convenience Store',
-    lat: 12.9681441,
-    lon: 79.1594053,
+    lat: 12.9679250,
+    lon: 79.1595513,
     type: 'shop',
     purpose: 'Convenience Store near J Block',
     tags: { shop: 'convenience', name: 'Convenience Store' },
