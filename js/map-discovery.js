@@ -194,9 +194,9 @@ const CAMPUS_SURVEYED_POIS = [
     lat: 12.9683037,
     lon: 79.1583144,
     type: 'dormitory',
-    purpose: "Men's Hostel A Block (7 Floors)",
+    purpose: 'Ladies Hostel A Block (7 Floors)',
     tags: { building: 'dormitory', name: 'A Block' },
-    aliases: ['a block', 'block a', "men's hostel a", 'mens a block'],
+    aliases: ['a block', 'block a', 'ladies hostel a', 'ladies a block'],
   },
   {
     id: 'way/370766286',
@@ -204,9 +204,9 @@ const CAMPUS_SURVEYED_POIS = [
     lat: 12.9679410,
     lon: 79.1581289,
     type: 'dormitory',
-    purpose: "Men's Hostel B Block (7 Floors)",
+    purpose: 'Ladies Hostel B Block (7 Floors)',
     tags: { building: 'dormitory', name: 'B Block' },
-    aliases: ['b block', 'block b', "men's hostel b", 'mens b block'],
+    aliases: ['b block', 'block b', 'ladies hostel b', 'ladies b block'],
   },
 ];
 
