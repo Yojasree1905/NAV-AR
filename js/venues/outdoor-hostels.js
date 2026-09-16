@@ -51,29 +51,15 @@
     j_main_entrance:   { lat: 12.9683346, lon: 79.1594027 }, // OSM 14165878671 — J Block North-East Bend, confirmed by user as the actual main entrance (2026-09-10); the existing "J Block" point (South Foyer) is the side entrance and was deliberately left unchanged
     main_gate:         { lat: 12.9683659, lon: 79.1595077 }, // OSM 14165878674 — "security point & main gate for hostels" (repositioned + renamed 2026-09-09)
     convenience_store: { lat: 12.9679250, lon: 79.1595513 }, // Real GPS-walked coordinate from early on-site calibration (two independent walks, accuracy-weighted) — NOT the OSM crossroad node 14165878672, which route-provider.js's own walkway graph separately and correctly labels "Crossroad between J & H". That node had been mistakenly reused as the Convenience Store's coordinate, making the two indistinguishable on screen. Corrected 2026-09-10.
-
-    // Wider-campus buildings, added 2026-09-10 per explicit request to
-    // scope the recognized-building list to exactly this set. Real
-    // coordinates from the campus-wide OSM export (way/relation
-    // centroids — these are simple named buildings, not routing-critical
-    // hostel entry points, so a centroid is the right kind of point here
-    // unlike G/H/J above.
-    tech_tower:  { lat: 12.9706484, lon: 79.1594702 }, // relation/21134208
-    sjt:         { lat: 12.9710043, lon: 79.1638453 }, // relation/20995799 — Silver Jubilee Tower
-    prp:         { lat: 12.9712457, lon: 79.1662772 }, // way/1542862452 — Perl Research Park
-    smv:         { lat: 12.9691421, lon: 79.1577164 }, // relation/20827200 — Sir M Visvesvaraya Block (OSM short_name: "SMV Block")
-    library:     { lat: 12.9693316, lon: 79.1568478 }, // way/93175156 — EV Periyar Library
-    main_block:  { lat: 12.9692257, lon: 79.1558494 }, // relation/14938176 — Main Building
-    foodys:      { lat: 12.9690152, lon: 79.1583048 }, // way/93175238
-    health_centre: { lat: 12.9695284, lon: 79.1546460 }, // way/370765052
-    anna_auditorium: { lat: 12.9699782, lon: 79.1556379 }, // way/1548342976
-    ladies_a_block: { lat: 12.9683037, lon: 79.1583144 }, // relation/20992887 — Ladies Hostel A Block (43-point outer-ring centroid, verified against two separate exports)
-    ladies_b_block: { lat: 12.9679410, lon: 79.1581289 }, // way/370766286 — Ladies Hostel B Block
-    mgb: { lat: 12.9721148, lon: 79.1678485 }, // way/741165347 — Mahatma Gandhi Block
-    gate_3a: { lat: 12.9676309, lon: 79.1585197 }, // way/1530184785 — 3A Gate
-    main_uni_gate: { lat: 12.9683509, lon: 79.1556778 }, // way/1555145366 — Main Gate UNI Entrance
   };
 
+  // Scoped down to exactly this set 2026-09-11, per explicit request.
+  // The wider campus list (Technology Tower, SJT, PRP, SMV, Library,
+  // Main Block, A/B Block, MGB, 3A Gate, Main University Gate, Foodys,
+  // Health Centre, Anna Auditorium) is preserved in git history if it's
+  // ever wanted back — this file's history has every one of those with
+  // real, individually-verified coordinates already worked out, so
+  // re-adding any of them later is a small, safe change, not a redo.
   const NODES = [
     gpsNode('hostel_g',   'G Block', ['g block', 'hostel g', 'block g', 'ladies hostel g', 'g hostel', 'socrates'], true, 'Ladies Hostel G • Student Residence (17 Floors)'),
     gpsNode('hostel_h',   'H Block', ['h block', 'hostel h', 'block h', 'ladies hostel h', 'h hostel'],             true, 'Ladies Hostel H • Student Residence (17 Floors)'),
@@ -81,20 +67,6 @@
     gpsNode('j_main_entrance', 'J Block Main Entrance', ['j block main entrance', 'j main entrance', 'main entrance j block'], true, 'Ladies Hostel J • Main Entrance'),
     gpsNode('main_gate',  'Main Gate', ['main gate', 'the gate', 'hostel gate', 'security gate', 'gate'],           true, 'Hostel Complex Entry & Security Checkpoint'),
     gpsNode('convenience_store', 'Convenience Store', ['shop', 'store', 'convenience store', 'the shop', 'snacks'], true, 'Convenience Store near J Block'),
-    gpsNode('tech_tower', 'Technology Tower', ['technology tower', 'tech tower', 'tt'], true, 'Academic Building • Technology Tower (7 Floors)'),
-    gpsNode('sjt', 'Silver Jubilee Tower', ['sjt', 'silver jubilee tower'], true, 'Academic Building • SJT (9 Floors)'),
-    gpsNode('prp', 'Perl Research Park', ['prp', 'perl research park', 'research park'], true, 'Research Building • PRP (8 Floors)'),
-    gpsNode('smv', 'Sir M Visvesvaraya Block', ['smv', 'sir m visvesvaraya block', 'smv block'], true, 'Academic Building • SMV Block (2 Floors)'),
-    gpsNode('library', 'Library', ['library', 'ev periyar library', 'the library'], true, 'EV Periyar Library'),
-    gpsNode('main_block', 'Main Block', ['main block', 'main building'], true, 'University Main Building (3 Floors)'),
-    gpsNode('ladies_a_block', 'A Block', ['a block', 'block a', 'ladies hostel a', 'ladies a block'], true, 'Ladies Hostel A Block (7 Floors)'),
-    gpsNode('ladies_b_block', 'B Block', ['b block', 'block b', 'ladies hostel b', 'ladies b block'], true, 'Ladies Hostel B Block (7 Floors)'),
-    gpsNode('mgb', 'Mahatma Gandhi Block', ['mgb', 'mahatma gandhi block'], true, 'Academic Building • MGB'),
-    gpsNode('gate_3a', '3A Gate', ['3a gate', 'third a gate', 'gate 3a'], true, 'Campus Entry Gate 3A'),
-    gpsNode('main_uni_gate', 'Main University Gate', ['main entrance', 'university gate', 'main university gate', 'uni entrance', 'uni gate'], true, 'Main University Entrance Gate'),
-    gpsNode('foodys', 'Foodys', ['foodys', 'foody\'s'], true, 'Campus Food Shelter'),
-    gpsNode('health_centre', 'Health Centre', ['health centre', 'health center', 'hospital', 'medical centre'], true, 'Sri Narayani Hospital and Research Centre'),
-    gpsNode('anna_auditorium', 'Anna Auditorium', ['anna auditorium', 'auditorium', 'anna audi'], true, 'Conference & Event Auditorium'),
   ];
 
   // Apply calibrated walkway-entry coordinates
