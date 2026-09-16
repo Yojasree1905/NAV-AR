@@ -93,14 +93,29 @@ class WebXrGroundAr {
       }
 
       this.session = await navigator.xr.requestSession('immersive-ar', {
-        requiredFeatures: ['hit-test'],
-        optionalFeatures: ['dom-overlay'],
+        // dom-overlay used to be optional -- but without it, the app's
+        // real HTML UI (including the only way to exit the session)
+        // isn't composited into the visible output at all during an
+        // active XR session on most browsers. Better to fail the whole
+        // requestSession() cleanly here (caught below, falls back to the
+        // tested 2D view) than succeed into a session with no visible
+        // way out, which is close to what the pointer-events bug above
+        // looked like from the outside.
+        requiredFeatures: ['hit-test', 'dom-overlay'],
         domOverlay: { root: document.body },
       });
 
       this.glCanvas = document.createElement('canvas');
       this.glCanvas.id = 'webxr-canvas';
-      this.glCanvas.style.cssText = 'position:absolute; inset:0; width:100%; height:100%; z-index:5;';
+      // pointer-events:none is critical here -- without it, this
+      // fullscreen canvas silently captures every tap/click on the
+      // entire page the instant it's added to the DOM, regardless of
+      // whether the XR session itself ever succeeds. Real-device report:
+      // tapping "AR Lock" made the whole app stop responding to any
+      // input, while the old 2D canvas content stayed visible underneath
+      // -- exactly the signature of this bug (the transparent WebGL
+      // layer blocking input, not actually crashing anything).
+      this.glCanvas.style.cssText = 'position:absolute; inset:0; width:100%; height:100%; z-index:5; pointer-events:none;';
       document.body.appendChild(this.glCanvas);
 
       this.gl = this.glCanvas.getContext('webgl', { xrCompatible: true });
@@ -205,35 +220,47 @@ class WebXrGroundAr {
 
   _onXrFrame(t, frame) {
     const session = frame.session;
+    // Scheduled first, before any rendering work below — this way the
+    // frame loop keeps running on subsequent frames even if something in
+    // THIS frame's rendering throws, caught by the try/catch below rather
+    // than left as an uncaught exception in a per-frame callback.
     this._rafHandle = session.requestAnimationFrame((tt, ff) => this._onXrFrame(tt, ff));
 
-    const pose = frame.getViewerPose(this.refSpace);
-    if (!pose) return; // tracking lost this frame — skip, try again next frame
+    try {
+      const pose = frame.getViewerPose(this.refSpace);
+      if (!pose) return; // tracking lost this frame — skip, try again next frame
 
-    const glLayer = session.renderState.baseLayer;
-    const gl = this.gl;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, glLayer.framebuffer);
-    gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      const glLayer = session.renderState.baseLayer;
+      const gl = this.gl;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, glLayer.framebuffer);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-    // Refresh the hit-test result this frame; only redraw the ribbon if
-    // we actually have a real detected ground point to anchor it to —
-    // never fabricate a position when hit-testing comes back empty.
-    if (this.hitTestSource) {
-      const hitResults = frame.getHitTestResults(this.hitTestSource);
-      if (hitResults.length > 0) {
-        this._lastHitPose = hitResults[0].getPose(this.refSpace);
+      // Refresh the hit-test result this frame; only redraw the ribbon if
+      // we actually have a real detected ground point to anchor it to —
+      // never fabricate a position when hit-testing comes back empty.
+      if (this.hitTestSource) {
+        const hitResults = frame.getHitTestResults(this.hitTestSource);
+        if (hitResults.length > 0) {
+          this._lastHitPose = hitResults[0].getPose(this.refSpace);
+        }
       }
-    }
 
-    for (const view of pose.views) {
-      const viewport = glLayer.getViewport(view);
-      gl.viewport(viewport.x, viewport.y, viewport.width, viewport.height);
-      if (this._lastHitPose) {
-        this._drawGroundRibbon(view, this._lastHitPose);
+      for (const view of pose.views) {
+        const viewport = glLayer.getViewport(view);
+        gl.viewport(viewport.x, viewport.y, viewport.width, viewport.height);
+        if (this._lastHitPose) {
+          this._drawGroundRibbon(view, this._lastHitPose);
+        }
       }
+    } catch (err) {
+      // One bad frame should never take down the whole session — log it
+      // and let the already-scheduled next frame try again, rather than
+      // letting this propagate as an uncaught exception in a callback
+      // that runs continuously.
+      console.warn('WebXR frame render error (skipping this frame):', err);
     }
   }
 
