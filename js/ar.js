@@ -31,11 +31,14 @@ class ArOverlay {
     // Orientation
     this.heading = null;
     this.hasLiveHeading = false;
-    this.headingSource = null; // 'sensor-api' | 'deviceorientation' | null — which method actually delivered a reading, shown in the debug readout
+    this.headingSource = null; // 'sensor-api' | 'deviceorientation' | 'gps-course' | null — which method actually delivered a reading, shown in the debug readout
     this.pitch = null; // device tilt (beta), for making the path respond to how the phone is actually held
     this._pitchBaseline = null; // calibrated from the first several readings, since people hold phones at different natural angles
     this._pitchSamples = [];
     this._absOrientationSensor = null;
+    this._lastGpsFix = null; // { lat, lon, t } — for GPS-course heading, the lowest-priority fallback
+    this._gpsCourseHeading = null;
+    this._gpsCourseUpdatedAt = 0;
 
     // GPS & Navigation
     this.currentLat = null;
@@ -210,6 +213,42 @@ class ArOverlay {
     this.clearRoute();
   }
 
+  /**
+   * GPS-course heading — the lowest-priority fallback, used only when
+   * neither sensor-api nor deviceorientation is delivering anything.
+   * Derives "which way you're facing" from the bearing between
+   * consecutive real GPS fixes, the same technique Google Maps and
+   * similar apps fall back to when a device's compass is unreliable —
+   * no magnetometer involved at all, just the Geolocation API, which is
+   * already working reliably elsewhere in this app.
+   *
+   * Real limitation, inherent to the technique, not a bug: this can only
+   * ever reflect the direction you're actually MOVING, so it's not
+   * available while standing still, and it lags slightly behind true
+   * heading right after a turn (needs a new fix far enough past the old
+   * one to compute a meaningful bearing). Call on every GPS update;
+   * safe to call even when standing still or with noisy fixes — those
+   * cases are filtered out internally rather than producing a bad
+   * heading.
+   */
+  updateGpsPosition(lat, lon, accuracy) {
+    const now = Date.now();
+    if (this._lastGpsFix) {
+      const dist = _haversine(this._lastGpsFix.lat, this._lastGpsFix.lon, lat, lon);
+      const dt = (now - this._lastGpsFix.t) / 1000;
+      // Require real, deliberate movement (not GPS jitter) and a
+      // reasonably fresh accuracy reading before trusting the bearing —
+      // a wildly inaccurate fix moving "3m" could easily just be noise.
+      const MIN_MOVEMENT_M = 3;
+      const MAX_ACCURACY_M = 25;
+      if (dist >= MIN_MOVEMENT_M && dt > 0 && dt < 30 && (accuracy == null || accuracy <= MAX_ACCURACY_M)) {
+        this._gpsCourseHeading = _initialBearing(this._lastGpsFix.lat, this._lastGpsFix.lon, lat, lon);
+        this._gpsCourseUpdatedAt = now;
+      }
+    }
+    this._lastGpsFix = { lat, lon, t: now };
+  }
+
   setDetectedObjects(boxes, vw, vh) {
     this.detectedObjects = boxes || [];
     this.detectedVideoSize = { w: vw, h: vh };
@@ -298,9 +337,25 @@ class ArOverlay {
     // *appeared* misaligned because it was being computed from a fake
     // heading, not because the underlying sensor code was broken. Now
     // this is explicit and visible instead of silent.
+    //
+    // Priority: sensor-api / deviceorientation (whichever is actually
+    // delivering readings — set in _onOrientation and
+    // _startAbsoluteOrientationSensor) beat GPS-course, since a true
+    // compass reading works standing still and reacts instantly, while
+    // GPS-course only updates as you walk. GPS-course only takes over
+    // when neither sensor method has ever delivered anything AND a
+    // recent, real movement-derived bearing exists (checked for
+    // staleness — a bearing from 40 seconds ago while now standing still
+    // is more likely to mislead than help).
     let heading = this.heading;
-    if (!this.hasLiveHeading || heading === null) {
+    if ((!this.hasLiveHeading || heading === null) &&
+        this._gpsCourseHeading !== null && Date.now() - this._gpsCourseUpdatedAt < 15000) {
+      heading = this._gpsCourseHeading;
+      this.heading = heading; // keep in sync — other code (e.g. webxr-ar.js's setCompassHeading feed) reads this.heading directly, and the debug readout below does too
+      this.headingSource = 'gps-course';
+    } else if (!this.hasLiveHeading || heading === null) {
       heading = 0;
+      if (this.headingSource === 'gps-course') this.headingSource = null; // was using a since-gone-stale GPS-course bearing — don't let the debug readout keep reporting it as a live source
       this._drawNoCompassNotice(w, topOffset);
     }
 
@@ -331,8 +386,9 @@ class ArOverlay {
     // it was silently never visible. Restored, and now always includes
     // live heading so "is the compass working" is directly checkable
     // from a screenshot instead of something to guess at.
-    const sourceTag = this.headingSource === 'sensor-api' ? ' [sensor-api]' : this.headingSource === 'deviceorientation' ? ' [deviceorientation]' : '';
-    const compassLine = this.hasLiveHeading
+    const sourceLabels = { 'sensor-api': ' [sensor-api]', deviceorientation: ' [deviceorientation]', 'gps-course': ' [gps-course]' };
+    const sourceTag = sourceLabels[this.headingSource] || '';
+    const compassLine = this.headingSource
       ? `Compass: ${Math.round(this.heading)}°${sourceTag}`
       : 'Compass: NO SIGNAL (assuming north)';
     this._drawDebugInfo(w, h, this.debugInfo ? `${compassLine} | ${this.debugInfo}` : compassLine);

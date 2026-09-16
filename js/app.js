@@ -758,10 +758,12 @@ function _handleGpsUpdate(fix) {
   miniMap && miniMap.updatePosition(fix.lat, fix.lon, fix.accuracy);
   ar && ar.setNearbyBuildings(_allDestinations, fix.lat, fix.lon);
 
-  // GPS course-over-ground as compass fallback (fires when device compass unavailable)
-  if (ar && fix.heading !== null && fix.heading !== undefined && !ar.hasLiveHeading) {
-    ar.heading = fix.heading;
-  }
+  // GPS-course heading fallback — self-computed from consecutive real
+  // fixes (see ArOverlay.updateGpsPosition), not dependent on the
+  // browser populating GeolocationCoordinates.heading, which is often
+  // null/unpopulated on many devices and was why an earlier, simpler
+  // version of this fallback wasn't actually helping.
+  ar && ar.updateGpsPosition(fix.lat, fix.lon, fix.accuracy);
 
   if (!gpsNavActive || state.phase !== 'navigating') return;
   const route = state.activeRoute;
