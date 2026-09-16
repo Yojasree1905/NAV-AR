@@ -75,13 +75,13 @@ const CAMPUS_SURVEYED_POIS = [
   },
   {
     id: 'node/14165878674',
-    name: 'Main Gate',
+    name: 'Hostel Gate',
     lat: 12.9683659,
     lon: 79.1595077,
     type: 'gate',
     purpose: 'Hostel Complex Entry & Security Checkpoint',
     tags: { barrier: 'gate', name: 'security point & main gate for hostels' },
-    aliases: ['main gate', 'hostel gate', 'the gate', 'security gate', 'gate', 'security point'],
+    aliases: ['hostel gate', 'main gate', 'the gate', 'security gate', 'gate', 'security point'],
   },
   {
     // Real GPS-walked coordinate (see outdoor-hostels.js for the full

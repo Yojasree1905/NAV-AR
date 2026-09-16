@@ -65,7 +65,7 @@
     gpsNode('hostel_h',   'H Block', ['h block', 'hostel h', 'block h', 'ladies hostel h', 'h hostel'],             true, 'Ladies Hostel H • Student Residence (17 Floors)'),
     gpsNode('hostel_j',   'J Block', ['j block', 'hostel j', 'block j', 'ladies hostel j', 'j hostel'],             true, 'Ladies Hostel J • Student Residence (17 Floors)'),
     gpsNode('j_main_entrance', 'J Block Main Entrance', ['j block main entrance', 'j main entrance', 'main entrance j block'], true, 'Ladies Hostel J • Main Entrance'),
-    gpsNode('main_gate',  'Main Gate', ['main gate', 'the gate', 'hostel gate', 'security gate', 'gate'],           true, 'Hostel Complex Entry & Security Checkpoint'),
+    gpsNode('main_gate',  'Hostel Gate', ['hostel gate', 'main gate', 'the gate', 'security gate', 'gate'],           true, 'Hostel Complex Entry & Security Checkpoint'),
     gpsNode('convenience_store', 'Convenience Store', ['shop', 'store', 'convenience store', 'the shop', 'snacks'], true, 'Convenience Store near J Block'),
   ];
 
