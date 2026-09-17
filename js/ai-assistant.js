@@ -26,6 +26,7 @@
  */
 
 const OPENAI_MODEL = 'gpt-4o-mini'; // fast + cheap, appropriate for short spoken answers
+const OPENAI_VISION_MODEL = 'gpt-4o-mini'; // same model — gpt-4o-mini accepts image input too, no separate model needed
 const SYSTEM_PROMPT =
   'You are a calm, concise voice assistant for a blind or low-vision pedestrian. ' +
   'You are given structured sensor data (location, route, detected hazards, traffic) and a spoken question. ' +
@@ -86,6 +87,78 @@ class AiAssistant {
       return answer ? answer.trim() : "I didn't get a usable answer back from OpenAI.";
     } catch (err) {
       console.warn('OpenAI request failed:', err);
+      return "I couldn't reach OpenAI — check your internet connection.";
+    }
+  }
+
+  /**
+   * Sends a single camera frame (as a base64 data URL) along with the
+   * user's spoken question to a vision-capable model, asking it to
+   * identify the building/place in view. Deliberately NOT a continuous
+   * live-recognition system — this is one-shot, asked explicitly, and
+   * the model is instructed to say plainly when it can't tell rather
+   * than confidently guess. This genuinely works when a name board or
+   * sign is visible in frame (reading text in an image is a
+   * well-solved problem for these models) and genuinely does NOT work
+   * from raw architectural appearance alone with no legible signage —
+   * that's the same visual-recognition problem tested twice earlier
+   * this project and found unreliable, and a vision-language model
+   * guessing from architecture alone would have the same failure mode,
+   * just hidden behind more confident-sounding phrasing. The prompt
+   * below is written specifically to prevent that: it must refuse to
+   * name a building unless it can actually read identifying text.
+   */
+  async askAboutImage(imageDataUrl) {
+    if (!this.apiKey) {
+      return "I don't have an OpenAI key set up yet. Add one in Settings to enable this.";
+    }
+
+    const body = {
+      model: OPENAI_VISION_MODEL,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You are helping a blind or low-vision pedestrian identify a building from a single photo. ' +
+            'Only name the building if you can actually read a visible sign, nameplate, or lettering in ' +
+            'the image that identifies it — never guess a building\'s identity from its architecture, ' +
+            'shape, or general appearance alone, since that is not reliable. If you can read identifying ' +
+            'text, state the name you read and quote it. If you cannot read any identifying text, say ' +
+            'plainly that you can\'t identify the building from this photo, and briefly describe what IS ' +
+            'visible (e.g. "a multi-story building with a covered walkway") instead of guessing a name. ' +
+            'Answer in 1-2 short sentences suitable for text-to-speech — no lists, no markdown.',
+        },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'What building is this? Only tell me if you can read a sign or label — otherwise say so.' },
+            { type: 'image_url', image_url: { url: imageDataUrl } },
+          ],
+        },
+      ],
+      max_tokens: 120,
+      temperature: 0.2,
+    };
+
+    try {
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (res.status === 401) return "That OpenAI key doesn't look valid — check it in Settings.";
+      if (res.status === 429) return "OpenAI is rate-limiting these requests right now — try again in a moment.";
+      if (!res.ok) return `I couldn't reach OpenAI right now (error ${res.status}).`;
+
+      const data = await res.json();
+      const answer = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+      return answer ? answer.trim() : "I didn't get a usable answer back from OpenAI.";
+    } catch (err) {
+      console.warn('OpenAI vision request failed:', err);
       return "I couldn't reach OpenAI — check your internet connection.";
     }
   }

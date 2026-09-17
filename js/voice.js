@@ -29,6 +29,7 @@ class VoiceIO {
     onNextRequested,
     onCalibrateRequested,
     onAiQuery,
+    onBuildingIdQuery,
   } = {}) {
     this.onDestinationRequest = onDestinationRequest;
     this.onStop = onStop;
@@ -42,6 +43,7 @@ class VoiceIO {
     this.onNextRequested = onNextRequested; // () => void — manual leg-advance fallback
     this.onCalibrateRequested = onCalibrateRequested; // () => void — open outdoor calibration panel
     this.onAiQuery = onAiQuery; // (question) => void — open-ended question for the OpenAI layer
+    this.onBuildingIdQuery = onBuildingIdQuery; // () => void — "what building is this" one-shot camera snapshot query
 
     this.synth = window.speechSynthesis;
     this.lastSpokenAt = new Map();
@@ -386,7 +388,17 @@ class VoiceIO {
       return;
     }
 
-    // 3e. Open-ended questions answered by the OpenAI layer — "what's
+    // 3e. "What building is this" — a one-shot camera snapshot sent to a
+    // vision-capable model, distinct from the text-only AI query below.
+    // Checked first since "what building is this" would otherwise also
+    // match if the generic AI pattern were broader.
+    if (/\b(what building is this|which building is this|what is this building|identify (?:this|the) building|what'?s this building)\b/.test(cleanText)) {
+      this.playChime('success');
+      this.onBuildingIdQuery && this.onBuildingIdQuery();
+      return;
+    }
+
+    // 3f. Open-ended questions answered by the OpenAI layer — "what's
     // ahead", "how's the traffic", "describe the scene". Checked before
     // the generic destination fallback so these don't get misread as a
     // place name.

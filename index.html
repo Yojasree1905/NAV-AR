@@ -241,8 +241,11 @@
       <section class="sidebar-section">
         <h3 class="section-heading">AI Voice Assistant</h3>
         <p class="section-desc">
-          Powers "what's ahead", "how's the traffic", and "describe the scene".
+          Powers "what's ahead", "how's the traffic", "describe the scene", and "what building is this".
           Your key is stored only on this device (browser localStorage) — never saved to any file or sent anywhere except OpenAI.
+        </p>
+        <p class="section-desc" style="margin-top:8px; padding:10px; background:rgba(250,204,21,0.1); border-left:3px solid #facc15; border-radius:4px;">
+          <strong>"What building is this" — what it can and can't do:</strong> this sends one camera photo to OpenAI and asks it to read any visible sign or nameplate. It works well when a name board is in frame. It will <em>not</em> reliably identify a building from its architecture alone with no visible signage — it's instructed to say so plainly rather than guess. Each use is a real API call: a few seconds of delay, and uses your OpenAI usage/credits, not a live continuous overlay.
         </p>
         <div class="setting-item">
           <label for="openai-key-input" class="setting-label">OpenAI API Key</label>
@@ -281,6 +284,10 @@
           <div class="cmd-item">
             <span class="cmd-phrase">"Hey Nav, what's ahead"</span>
             <span class="cmd-desc">AI describes current scene (needs OpenAI key)</span>
+          </div>
+          <div class="cmd-item">
+            <span class="cmd-phrase">"Hey Nav, what building is this"</span>
+            <span class="cmd-desc">Reads visible signage in one photo (needs OpenAI key) — see note above</span>
           </div>
         </div>
       </section>

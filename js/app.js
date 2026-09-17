@@ -111,6 +111,7 @@ function init() {
     onNextRequested: () => voice.speak('GPS tracks your position automatically — no manual step needed.', { key: 'next-noop' }),
     onCalibrateRequested: () => toggleSidebar(true),
     onAiQuery: handleAiQuery,
+    onBuildingIdQuery: handleBuildingIdQuery,
   });
   voice.rate = settings.voiceRate;
   voice.chimesEnabled = settings.audioChimes;
@@ -1085,6 +1086,41 @@ async function handleAiQuery(question) {
   voice.speak('Let me check.', { key: 'ai-thinking', cooldownMs: 0 });
   const answer = await aiAssistant.ask(question, _buildAiContext());
   voice.speak(answer, { key: 'ai-answer', interrupt: true });
+}
+
+/**
+ * "What building is this" — captures one still frame from the live
+ * camera feed and sends it to the vision-capable OpenAI layer. On-
+ * demand only, never continuous: this is a real API call with real
+ * latency (a few seconds) and real cost per use, not a live overlay.
+ * See ai-assistant.js's askAboutImage() for why this only works when a
+ * visible sign/nameplate is in frame, and is instructed to say so
+ * plainly rather than guess otherwise.
+ */
+async function handleBuildingIdQuery() {
+  if (!aiAssistant) {
+    voice.speak("The AI assistant hasn't started yet. Tap Start first.", { key: 'ai-not-ready' });
+    return;
+  }
+  if (!aiAssistant.hasKey()) {
+    voice.speak('Add an OpenAI key in Settings to use this.', { key: 'ai-no-key', interrupt: true });
+    return;
+  }
+  if (!els.video || !els.video.videoWidth) {
+    voice.speak("The camera isn't ready yet.", { key: 'ai-no-camera', interrupt: true });
+    return;
+  }
+
+  voice.speak('Taking a look — this can take a few seconds.', { key: 'ai-vision-thinking', cooldownMs: 0 });
+
+  const canvas = document.createElement('canvas');
+  canvas.width = els.video.videoWidth;
+  canvas.height = els.video.videoHeight;
+  canvas.getContext('2d').drawImage(els.video, 0, 0);
+  const imageDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+  const answer = await aiAssistant.askAboutImage(imageDataUrl);
+  voice.speak(answer, { key: 'ai-vision-answer', interrupt: true });
 }
 
 // ------------------------------------------------------------------
