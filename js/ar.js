@@ -40,6 +40,17 @@ class ArOverlay {
     this._gpsCourseHeading = null;
     this._gpsCourseUpdatedAt = 0;
 
+    // Heading diagnostics — every failure path below used to only
+    // console.warn(), which is invisible when someone's debugging from a
+    // phone screenshot with no devtools access. This tracks *why* each
+    // source isn't delivering, so the on-screen NO SIGNAL line can show
+    // the actual reason instead of just the fact that it failed.
+    this._diag = {
+      orientationEvents: 0,      // total deviceorientation/deviceorientationabsolute events received
+      alphaNullEvents: 0,        // of those, how many had no usable heading data at all
+      sensorApiStatus: 'not tried', // 'not tried' | 'unsupported' | 'permission denied: <sensor>' | 'error: <name>' | 'active'
+    };
+
     // GPS & Navigation
     this.currentLat = null;
     this.currentLon = null;
@@ -122,26 +133,37 @@ class ArOverlay {
    * than before if it doesn't work.
    */
   async _startAbsoluteOrientationSensor() {
-    if (typeof AbsoluteOrientationSensor === 'undefined') return;
+    if (typeof AbsoluteOrientationSensor === 'undefined') {
+      this._diag.sensorApiStatus = 'unsupported';
+      return;
+    }
     try {
+      const names = ['accelerometer', 'gyroscope', 'magnetometer'];
       const results = await Promise.all(
-        ['accelerometer', 'gyroscope', 'magnetometer'].map((name) =>
+        names.map((name) =>
           navigator.permissions.query({ name }).catch(() => ({ state: 'unknown' }))
         )
       );
-      if (results.some((r) => r.state === 'denied')) return;
+      const deniedIdx = results.findIndex((r) => r.state === 'denied');
+      if (deniedIdx !== -1) {
+        this._diag.sensorApiStatus = `permission denied: ${names[deniedIdx]}`;
+        return;
+      }
 
       const sensor = new AbsoluteOrientationSensor({ frequency: 10, referenceFrame: 'screen' });
       sensor.addEventListener('reading', () => {
         const heading = _quaternionToHeadingDeg(sensor.quaternion);
         if (heading !== null) {
-          this.heading = heading;
+          this._applySmoothedHeading(heading);
           this.hasLiveHeading = true;
           this.headingSource = 'sensor-api';
+          this._diag.sensorApiStatus = 'active';
         }
       });
       sensor.addEventListener('error', (e) => {
-        console.warn('AbsoluteOrientationSensor error, falling back to deviceorientation:', e.error?.name || e);
+        const name = e.error?.name || String(e);
+        console.warn('AbsoluteOrientationSensor error, falling back to deviceorientation:', name);
+        this._diag.sensorApiStatus = `error: ${name}`;
         if (this.headingSource === 'sensor-api') {
           this.headingSource = null; // let _onOrientation's deviceorientation readings take back over
         }
@@ -149,7 +171,9 @@ class ArOverlay {
       sensor.start();
       this._absOrientationSensor = sensor;
     } catch (err) {
-      console.warn('AbsoluteOrientationSensor unavailable, using deviceorientation:', err.name || err);
+      const name = err.name || String(err);
+      console.warn('AbsoluteOrientationSensor unavailable, using deviceorientation:', name);
+      this._diag.sensorApiStatus = `error: ${name}`;
     }
   }
 
@@ -268,15 +292,18 @@ class ArOverlay {
     // would fight and jitter. deviceorientation still silently takes
     // back over automatically if the sensor API's error handler clears
     // headingSource (see _startAbsoluteOrientationSensor above).
+    this._diag.orientationEvents++;
     if (this.headingSource !== 'sensor-api') {
       if (typeof e.webkitCompassHeading === 'number') {
-        this.heading = e.webkitCompassHeading;
+        this._applySmoothedHeading(e.webkitCompassHeading);
         this.hasLiveHeading = true;
         this.headingSource = 'deviceorientation';
       } else if (e.alpha !== null) {
-        this.heading = (360 - e.alpha) % 360;
+        this._applySmoothedHeading((360 - e.alpha) % 360);
         this.hasLiveHeading = true;
         this.headingSource = 'deviceorientation';
+      } else {
+        this._diag.alphaNullEvents++;
       }
     }
 
@@ -303,6 +330,31 @@ class ArOverlay {
     if (this.pitch === null || this._pitchBaseline === null) return 0;
     const delta = this.pitch - this._pitchBaseline;
     return Math.max(-30, Math.min(30, delta));
+  }
+
+  /**
+   * Low-pass filter for incoming raw heading readings. deviceorientation
+   * fires 30-60 times a second straight from the magnetometer, and that
+   * signal is genuinely noisy — with no smoothing, every reading snapped
+   * this.heading directly, so a few degrees of sensor jitter translated
+   * into visibly darting/twitchy label positions even when the phone was
+   * held still, and any real rotation looked far more frantic on screen
+   * than the actual physical motion. This exponentially-weighted average
+   * settles that out while still tracking real turns responsively.
+   *
+   * Handles the 0°/360° wraparound explicitly (a naive average of e.g.
+   * 359° and 2° would wrongly pull toward 180° instead of 0.5°) by
+   * smoothing the shortest signed angular difference rather than the
+   * raw values themselves.
+   */
+  _applySmoothedHeading(rawDeg) {
+    if (this.heading === null || Number.isNaN(this.heading)) {
+      this.heading = rawDeg;
+      return;
+    }
+    const ALPHA = 0.25; // higher = snappier/less smoothing, lower = smoother/more lag
+    let diff = ((rawDeg - this.heading + 540) % 360) - 180; // shortest signed diff, range (-180, 180]
+    this.heading = (this.heading + diff * ALPHA + 360) % 360;
   }
 
   _raf() {
@@ -388,9 +440,19 @@ class ArOverlay {
     // from a screenshot instead of something to guess at.
     const sourceLabels = { 'sensor-api': ' [sensor-api]', deviceorientation: ' [deviceorientation]', 'gps-course': ' [gps-course]' };
     const sourceTag = sourceLabels[this.headingSource] || '';
+    // When there's no heading at all, append *why* — events:N is the
+    // deviceorientation event count (0 means the browser/OS never sent
+    // any, almost always a blocked motion-sensor permission), alpha-null
+    // means events arrived but carried no orientation data, and
+    // sensor-api: shows the Generic Sensor API's own status. This turns
+    // a bare "NO SIGNAL" into something a single screenshot can diagnose.
+    const d = this._diag;
+    const diagTag = ` | events:${d.orientationEvents}` +
+      (d.alphaNullEvents ? ` alpha-null:${d.alphaNullEvents}` : '') +
+      ` sensor-api:${d.sensorApiStatus}`;
     const compassLine = this.headingSource
       ? `Compass: ${Math.round(this.heading)}°${sourceTag}`
-      : 'Compass: NO SIGNAL (assuming north)';
+      : `Compass: NO SIGNAL (assuming north)${diagTag}`;
     this._drawDebugInfo(w, h, this.debugInfo ? `${compassLine} | ${this.debugInfo}` : compassLine);
 
     // 4. Ambient bubble
