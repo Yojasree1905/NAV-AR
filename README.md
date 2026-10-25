@@ -517,3 +517,26 @@ installed app, with no APK, no "unknown sources" warning, and no
 re-packaging every time you edit the code. The APK route above is worth it
 if you specifically want a file to send, or want it to eventually reach the
 Play Store.
+
+## Obstacle detection, people, and voice (works without an API key)
+
+The camera runs COCO-SSD at ~4 fps. Everything below is computed on the phone.
+
+- **People and objects.** People, chairs, tables, sofas, benches and vehicles trigger spoken warnings. Other objects (bags, bottles, laptops, TVs, plants, …) are only described when asked.
+- **Closing in.** Each object is tracked between frames; a box that keeps growing is reported as "getting closer" (people and vehicles only).
+- **Where it is.** Alerts say left / ahead / right, e.g. "Person getting closer from your left. Move slightly right."
+- **Other channels.** Vibration (Android Chrome) scales with urgency; with earphones a short beep is panned to the side the hazard is on. Both can be switched off in Settings.
+- **AR overlay.** Boxes carry a distance chip (`person ↑ · ~2.5 m`). Distances are rough zones from box height, not measurements.
+
+Voice commands (say "Hey Nav" first):
+
+| Say | Answer |
+|---|---|
+| "What is in front of me" / "What do you see" / "What's ahead" | Summary of what is in view, nearest first |
+| "Is there any obstacle" / "Is the path clear" | Whether anything is blocking the way |
+| "How many people are near me" / "Is anyone nearby" | People count, side and distance |
+| "How's the traffic" | Vehicle count and level |
+
+If an OpenAI key is set, "what's ahead" and "describe the scene" use it (and are given the detected objects); otherwise the on-device answer is used.
+
+Tests: `node test/detection-tests.js` (logic, no browser) and `node test/e2e-detection.js` (headless Chromium; needs Playwright and the app served at `APP_URL`, default `http://localhost:8765/`; it replaces the COCO-SSD CDN script with a scripted stub).

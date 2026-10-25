@@ -491,19 +491,31 @@ class ArOverlay {
 
   /** Persistent bottom-left debug readout (compass heading, hazard model status) — developer/tester-visible, not meant to be pretty, so real-device issues are diagnosable from a screenshot instead of a guess. */
   _drawDebugInfo(w, h, text) {
+    // Segments separated by " | " each get their own row (stacked upward from
+    // the bottom edge), and a row's font shrinks to fit, so a long diagnostic
+    // string is never clipped by the screen edge.
     const { ctx } = this;
-    ctx.save();
-    ctx.font = '600 11px monospace';
+    const lines = String(text).split(' | ').filter(Boolean);
     const paddingX = 6;
-    const textW = ctx.measureText(text).width;
-    const boxH = 18;
-    const y = h - boxH - 8;
-    ctx.fillStyle = 'rgba(0,0,0,0.65)';
-    ctx.fillRect(6, y, textW + paddingX * 2, boxH);
-    ctx.fillStyle = '#0f0';
+    const rowH = 16;
+    const maxW = w - 12 - paddingX * 2;
+    ctx.save();
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText(text, 6 + paddingX, y + boxH / 2 + 1);
+    lines.forEach((line, i) => {
+      let size = 11;
+      ctx.font = `600 ${size}px monospace`;
+      while (size > 8 && ctx.measureText(line).width > maxW) {
+        size--;
+        ctx.font = `600 ${size}px monospace`;
+      }
+      const textW = Math.min(ctx.measureText(line).width, maxW);
+      const y = h - 8 - (lines.length - i) * rowH;
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillRect(6, y, textW + paddingX * 2, rowH - 2);
+      ctx.fillStyle = '#0f0';
+      ctx.fillText(line, 6 + paddingX, y + (rowH - 2) / 2 + 1, maxW);
+    });
     ctx.restore();
   }
 
@@ -897,14 +909,15 @@ class ArOverlay {
       const boxW = br.x - tl.x;
       const boxH = br.y - tl.y;
       const style = ZONE_STYLE[obj.zone] || ZONE_STYLE.far;
+      const text = obj.caption || obj.label;
 
       ctx.save();
       ctx.strokeStyle = style.color;
-      ctx.lineWidth = style.lineWidth;
+      ctx.lineWidth = style.lineWidth + (obj.isPerson ? 1.5 : 0) + (obj.approaching ? 1 : 0);
       ctx.strokeRect(tl.x, tl.y, boxW, boxH);
 
       ctx.font = '600 12px system-ui, sans-serif';
-      const tw = ctx.measureText(obj.label).width;
+      const tw = ctx.measureText(text).width;
       const chipW = tw + 12;
       const chipH = 20;
       const chipY = Math.max(tl.y - chipH, 0);
@@ -913,7 +926,7 @@ class ArOverlay {
       ctx.fillStyle = '#fff';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText(obj.label, tl.x + 6, chipY + chipH / 2 + 1);
+      ctx.fillText(text, tl.x + 6, chipY + chipH / 2 + 1);
       ctx.restore();
     }
   }

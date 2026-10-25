@@ -54,6 +54,19 @@ const LABEL_SPOKEN_AS = {
 };
 const VEHICLE_CLASSES = new Set(['car', 'motorcycle', 'bus', 'bicycle', 'truck']);
 
+// Everything else COCO-SSD can name that is useful to *describe* when asked
+// ("what's in front of me") but not worth interrupting the user for. These
+// never trigger spoken warnings on their own; they only appear in the scene
+// list (and as boxes once they are close enough to matter).
+const SCENE_ONLY_LABELS = new Set([
+  'backpack', 'handbag', 'suitcase', 'umbrella', 'bottle', 'cup', 'laptop', 'tv',
+  'potted plant', 'bed', 'toilet', 'sink', 'refrigerator', 'book', 'clock', 'vase',
+  'dog', 'cat', 'traffic light', 'stop sign', 'fire hydrant',
+]);
+const SCENE_SPOKEN_AS = {
+  tv: 'television', 'potted plant': 'plant', refrigerator: 'fridge', handbag: 'bag',
+};
+
 // Bounding-box height / frame height thresholds, mapped to the app's
 // existing reaction-distance zones. Tune per-phone during calibration.
 const ZONE_THRESHOLDS = [
@@ -82,6 +95,22 @@ function lateralGuidance(centerXRatio) {
   return 'stop, or step around carefully';
 }
 
+/**
+ * 'approaching' when the box has grown by >=12% over at least half a second
+ * of history, 'receding' for the opposite, otherwise 'steady'. Needs several
+ * samples so one noisy box can't flip it.
+ */
+function trendOf(hist) {
+  if (hist.length < 4) return 'steady';
+  const first = hist[0];
+  const last = hist[hist.length - 1];
+  if (last.t - first.t < 500) return 'steady';
+  const rel = (last.h - first.h) / Math.max(first.h, 0.01);
+  if (rel >= 0.12) return 'approaching';
+  if (rel <= -0.12) return 'receding';
+  return 'steady';
+}
+
 function trafficLevelFor(avgCount) {
   if (avgCount < TRAFFIC_THRESHOLDS.low) return 'LOW';
   if (avgCount < TRAFFIC_THRESHOLDS.medium) return 'MEDIUM';
@@ -97,7 +126,14 @@ class HazardDetector {
     this.model = null;
     this.running = false;
     this._vehicleCountHistory = [];
-    this.latestSnapshot = { hazard: null, traffic: { level: 'LOW', counts: {}, totalVehicles: 0 }, timestamp: null };
+    this._tracks = [];      // per-object tracks, used to tell "getting closer" from "static"
+    this._nextTrackId = 0;
+    this.latestSnapshot = {
+      hazard: null,
+      traffic: { level: 'LOW', counts: {}, totalVehicles: 0 },
+      scene: [],            // every detection this tick (see scene.js for the record shape)
+      timestamp: null,
+    };
   }
 
   async load() {
@@ -132,36 +168,85 @@ class HazardDetector {
     const w = this.videoEl.videoWidth;
     const h = this.videoEl.videoHeight;
     if (!w || !h) return;
+    this._process(predictions, w, h, Date.now());
+  }
 
-    let worst = null; // pick the single highest-priority hazard per tick
-    const vehicleCounts = { car: 0, motorcycle: 0, bus: 0, bicycle: 0, truck: 0 };
-    const allBoxes = []; // every relevant detection this tick, for the visual outline overlay (not just the "worst" one)
-
+  /**
+   * Turns raw COCO-SSD predictions into the hazard to speak, the full scene
+   * list, the traffic level and the boxes to draw. Separate from _tick so it
+   * can be exercised with scripted predictions and an injected clock.
+   */
+  _process(predictions, w, h, now) {
+    // 1. Normalise every usable prediction into a detection.
+    const dets = [];
     for (const p of predictions) {
-      if (VEHICLE_CLASSES.has(p.class) && p.score >= 0.5) vehicleCounts[p.class]++;
-      if (!HAZARD_LABELS.has(p.class) || p.score < 0.55) continue;
+      const isHazardClass = HAZARD_LABELS.has(p.class);
+      if (!isHazardClass && !SCENE_ONLY_LABELS.has(p.class)) continue;
+      if (p.score < (isHazardClass ? 0.55 : 0.5)) continue;
       const [x, y, bw, bh] = p.bbox;
-      const heightRatio = bh / h;
-      const centerXRatio = (x + bw / 2) / w;
-      const zone = zoneFor(heightRatio);
-      const priority = ZONE_THRESHOLDS.findIndex((t) => t.zone === zone); // lower index = more urgent
-
-      allBoxes.push({
-        label: LABEL_SPOKEN_AS[p.class] || p.class,
-        zone,
-        bbox: p.bbox, // [x, y, width, height] in native video pixel coordinates
+      dets.push({
+        cls: p.class,
+        label: LABEL_SPOKEN_AS[p.class] || SCENE_SPOKEN_AS[p.class] || p.class,
+        bbox: p.bbox,
+        cx: (x + bw / 2) / w,
+        cy: (y + bh / 2) / h,
+        h: bh / h,
+        isHazardClass,
+        isPerson: p.class === 'person',
         isVehicle: VEHICLE_CLASSES.has(p.class),
       });
+    }
 
-      if (zone === 'far') continue; // not worth interrupting the user yet
+    // 2. Track across ticks so growth in box height can be read as "closer".
+    this._updateTracks(dets, now);
 
+    // 3. Zone, direction, priority, boxes.
+    let worst = null; // pick the single highest-priority hazard per tick
+    const vehicleCounts = { car: 0, motorcycle: 0, bus: 0, bicycle: 0, truck: 0 };
+    for (const p of predictions) {
+      if (VEHICLE_CLASSES.has(p.class) && p.score >= 0.5) vehicleCounts[p.class]++;
+    }
+    const allBoxes = []; // what the AR overlay draws
+    const scene = [];    // what voice queries read
+
+    for (const d of dets) {
+      d.zone = zoneFor(d.h);
+      d.direction = SceneDescriber.directionOf(d.cx);
+      d.approaching = d.trend === 'approaching';
+      const zoneIdx = ZONE_THRESHOLDS.findIndex((t) => t.zone === d.zone); // lower = more urgent
+
+      scene.push({
+        label: d.label, zone: d.zone, direction: d.direction, centerXRatio: d.cx,
+        approaching: d.approaching, isPerson: d.isPerson, isVehicle: d.isVehicle,
+      });
+
+      // Draw hazard classes always; draw other objects only once they are close enough to matter.
+      if (d.isHazardClass || d.zone !== 'far') {
+        allBoxes.push({
+          label: d.label,
+          caption: SceneDescriber.captionFor(d),
+          zone: d.zone,
+          bbox: d.bbox, // [x, y, width, height] in native video pixel coordinates
+          isVehicle: d.isVehicle,
+          isPerson: d.isPerson,
+          approaching: d.approaching,
+        });
+      }
+
+      if (!d.isHazardClass || d.zone === 'far') continue; // not worth interrupting the user
+
+      // People and anything closing in rank ahead of equally close static objects.
+      const priority = zoneIdx - (d.approaching && (d.isPerson || d.isVehicle) ? 0.5 : 0) - (d.isPerson ? 0.25 : 0);
       const candidate = {
-        label: LABEL_SPOKEN_AS[p.class] || p.class,
-        zone,
-        centerXRatio,
-        guidance: zone === 'critical' ? lateralGuidance(centerXRatio) : null,
+        label: d.label,
+        zone: d.zone,
+        centerXRatio: d.cx,
+        direction: d.direction,
+        approaching: d.approaching,
+        guidance: d.zone === 'critical' ? lateralGuidance(d.cx) : null,
         priority,
-        isVehicle: VEHICLE_CLASSES.has(p.class),
+        isPerson: d.isPerson,
+        isVehicle: d.isVehicle,
       };
       if (!worst || candidate.priority < worst.priority) worst = candidate;
     }
@@ -181,10 +266,45 @@ class HazardDetector {
       worst = { label: 'steps', zone: 'near', guidance: null, priority: 1, isHeuristic: true };
     }
 
-    this.latestSnapshot = { hazard: worst, traffic: trafficInfo, timestamp: Date.now() };
+    this.latestSnapshot = { hazard: worst, traffic: trafficInfo, scene, timestamp: now };
     if (worst) this.onHazard(worst);
     if (this.onTrafficUpdate) this.onTrafficUpdate(trafficInfo);
     if (this.onDetections) this.onDetections(allBoxes, w, h);
+  }
+
+  /**
+   * Greedy nearest-centre matching of this tick's detections to existing
+   * tracks of the same class. Each track keeps a short history of box
+   * heights; a sustained rise means the object is getting closer.
+   */
+  _updateTracks(dets, now) {
+    const MAX_MATCH_DIST = 0.22; // normalised frame units
+    const TTL_MS = 1500;
+    const WINDOW = 6;
+    this._tracks = this._tracks.filter((t) => now - t.lastSeen <= TTL_MS);
+    const used = new Set();
+    // largest (closest) first, so the big box claims its own track before smaller ones
+    const order = dets.slice().sort((a, b) => b.h - a.h);
+    for (const d of order) {
+      let best = null;
+      let bestDist = MAX_MATCH_DIST;
+      for (const t of this._tracks) {
+        if (used.has(t) || t.cls !== d.cls) continue;
+        const dist = Math.hypot(t.cx - d.cx, t.cy - d.cy);
+        if (dist < bestDist) { bestDist = dist; best = t; }
+      }
+      if (!best) {
+        best = { id: ++this._nextTrackId, cls: d.cls, hist: [] };
+        this._tracks.push(best);
+      }
+      used.add(best);
+      best.cx = d.cx;
+      best.cy = d.cy;
+      best.lastSeen = now;
+      best.hist.push({ t: now, h: d.h });
+      if (best.hist.length > WINDOW) best.hist.shift();
+      d.trend = trendOf(best.hist);
+    }
   }
 
   /**
@@ -231,3 +351,4 @@ class HazardDetector {
 }
 
 window.HazardDetector = HazardDetector;
+if (typeof module !== 'undefined' && module.exports) module.exports = HazardDetector;

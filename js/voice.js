@@ -30,6 +30,7 @@ class VoiceIO {
     onCalibrateRequested,
     onAiQuery,
     onBuildingIdQuery,
+    onSceneQuery,
   } = {}) {
     this.onDestinationRequest = onDestinationRequest;
     this.onStop = onStop;
@@ -44,6 +45,7 @@ class VoiceIO {
     this.onCalibrateRequested = onCalibrateRequested; // () => void — open outdoor calibration panel
     this.onAiQuery = onAiQuery; // (question) => void — open-ended question for the OpenAI layer
     this.onBuildingIdQuery = onBuildingIdQuery; // () => void — "what building is this" one-shot camera snapshot query
+    this.onSceneQuery = onSceneQuery; // (kind: 'scene'|'obstacle'|'people'|'traffic') => void — answered on-device from the detector, no API key
 
     this.synth = window.speechSynthesis;
     this.lastSpokenAt = new Map();
@@ -53,6 +55,7 @@ class VoiceIO {
     this.rate = 1.02;
     this.pitch = 1.0;
     this.chimesEnabled = true;
+    this.vibrationEnabled = true;
 
     // Wake word state
     this.wakeWordActive = false;
@@ -398,6 +401,26 @@ class VoiceIO {
       return;
     }
 
+    // 3e-2. On-device scene questions, answered from the live detector with
+    // no API key and no network: "how many people are near me", "is there
+    // any obstacle", "what's in front of me". Checked before 3f so these
+    // get the instant local answer instead of an OpenAI round-trip.
+    if (/\b(how many (?:people|persons)|(?:is|are) there (?:any )?(?:people|persons)|is (?:there )?(?:anyone|anybody|someone|somebody) (?:near|nearby|around|ahead|close|in front)|(?:anyone|anybody|someone) (?:near|nearby|around|ahead)|any (?:people|persons) (?:near|nearby|around|ahead)|people (?:near|nearby|around|ahead))\b/.test(cleanText)) {
+      this.playChime('success');
+      this.onSceneQuery && this.onSceneQuery('people');
+      return;
+    }
+    if (/\b(is there (?:any|an|a) (?:obstacle|obstruction|hazard|danger|object)|any (?:obstacle|obstacles|hazard|hazards)|(?:anything|something) (?:in front|ahead|blocking)|is (?:the|my) (?:way|path) clear|is it clear|am i clear)\b/.test(cleanText)) {
+      this.playChime('success');
+      this.onSceneQuery && this.onSceneQuery('obstacle');
+      return;
+    }
+    if (/\b(what'?s in front of me|what is in front of me|what do you see|what can you see|what'?s around me|what is around me|what'?s near me|what is near me|what objects)\b/.test(cleanText)) {
+      this.playChime('success');
+      this.onSceneQuery && this.onSceneQuery('scene');
+      return;
+    }
+
     // 3f. Open-ended questions answered by the OpenAI layer — "what's
     // ahead", "how's the traffic", "describe the scene". Checked before
     // the generic destination fallback so these don't get misread as a
@@ -435,6 +458,56 @@ class VoiceIO {
 
     this.playChime('success');
     this.onDestinationRequest && this.onDestinationRequest(stripped || cleanText);
+  }
+
+  /**
+   * Haptic alert. No-op where the Vibration API isn't available (iOS Safari)
+   * or the user has switched it off.
+   */
+  vibrate(pattern) {
+    if (!this.vibrationEnabled) return false;
+    try {
+      return typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function'
+        ? navigator.vibrate(pattern)
+        : false;
+    } catch (_) { return false; }
+  }
+
+  /**
+   * Short beep placed in the stereo field so the sound itself points at the
+   * hazard (best on earphones). pan: -1 = left ear, 0 = centre, +1 = right
+   * ear. Higher pitch and a double beep for closer zones. Follows the "audio
+   * chimes" setting. Falls back to a centred beep where StereoPanner is
+   * unsupported.
+   */
+  playSpatialCue(pan = 0, zone = 'near') {
+    if (!this.chimesEnabled || !this._audioCtx) return false;
+    try {
+      const ctx = this._audioCtx;
+      if (ctx.state === 'suspended') ctx.resume();
+      const freq = zone === 'critical' ? 880 : zone === 'near' ? 660 : 520;
+      const beeps = zone === 'critical' ? 2 : 1;
+      const panner = typeof ctx.createStereoPanner === 'function' ? ctx.createStereoPanner() : null;
+      if (panner) panner.pan.value = Math.max(-1, Math.min(1, pan));
+      const t0 = ctx.currentTime;
+      for (let i = 0; i < beeps; i++) {
+        const start = t0 + i * 0.16;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, start);
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(0.16, start + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.12);
+        osc.connect(gain);
+        if (panner) { gain.connect(panner); } else { gain.connect(ctx.destination); }
+        osc.start(start);
+        osc.stop(start + 0.13);
+      }
+      if (panner) panner.connect(ctx.destination);
+      this.lastSpatialCue = { pan, zone, at: Date.now() }; // inspectable in tests
+      return true;
+    } catch (_) { return false; }
   }
 
   speak(text, opts = {}) {

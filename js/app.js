@@ -30,6 +30,7 @@ const settings = {
   voiceRate: 1.0,
   audioChimes: true,
   hazardsEnabled: true,
+  vibrationEnabled: true,
   routingProvider: 'osrm',  // 'osrm' | 'ors' | 'gmaps'
   orsApiKey: '',
   gmapsApiKey: '',
@@ -85,6 +86,7 @@ function init() {
   els.voiceRateVal       = document.getElementById('voice-rate-val');
   els.audioChimesToggle  = document.getElementById('audio-chimes-toggle');
   els.hazardToggle       = document.getElementById('hazard-toggle');
+  els.vibrationToggle    = document.getElementById('vibration-toggle');
   els.testVoiceBtn       = document.getElementById('test-voice-btn');
   els.openaiKeyInput     = document.getElementById('openai-key-input');
   els.saveOpenaiKeyBtn   = document.getElementById('save-openai-key-btn');
@@ -112,9 +114,11 @@ function init() {
     onCalibrateRequested: () => toggleSidebar(true),
     onAiQuery: handleAiQuery,
     onBuildingIdQuery: handleBuildingIdQuery,
+    onSceneQuery: handleSceneQuery,
   });
   voice.rate = settings.voiceRate;
   voice.chimesEnabled = settings.audioChimes;
+  voice.vibrationEnabled = settings.vibrationEnabled;
 
   // OpenAI setup
   aiAssistant = new AiAssistant();
@@ -166,6 +170,15 @@ function init() {
       settings.audioChimes = e.target.checked;
       voice.chimesEnabled = settings.audioChimes;
       try { localStorage.setItem('navassist_chimes', String(settings.audioChimes)); } catch (_) {}
+    });
+  }
+
+  if (els.vibrationToggle) {
+    els.vibrationToggle.addEventListener('change', (e) => {
+      settings.vibrationEnabled = e.target.checked;
+      voice.vibrationEnabled = settings.vibrationEnabled;
+      try { localStorage.setItem('navassist_vibration', String(settings.vibrationEnabled)); } catch (_) {}
+      if (settings.vibrationEnabled) voice.vibrate(80); // feel it once so the user knows it's on
     });
   }
 
@@ -273,6 +286,8 @@ function _loadSettings() {
     if (c !== null) settings.audioChimes = c === 'true';
     const h = localStorage.getItem('navassist_hazards');
     if (h !== null) settings.hazardsEnabled = h === 'true';
+    const vb = localStorage.getItem('navassist_vibration');
+    if (vb !== null) settings.vibrationEnabled = vb === 'true';
     const fov = localStorage.getItem('navassist_fov');
     if (fov) settings.cameraFovH = parseInt(fov, 10) || 60;
     const rp = localStorage.getItem('navassist_routing_provider');
@@ -291,6 +306,7 @@ function _syncSettingsUI() {
   }
   if (els.audioChimesToggle) els.audioChimesToggle.checked = settings.audioChimes;
   if (els.hazardToggle)      els.hazardToggle.checked = settings.hazardsEnabled;
+  if (els.vibrationToggle)   els.vibrationToggle.checked = settings.vibrationEnabled;
   if (els.routingProviderSel) els.routingProviderSel.value = settings.routingProvider;
   if (els.orsKeyInput)   els.orsKeyInput.value = settings.orsApiKey;
   if (els.gmapsKeyInput) els.gmapsKeyInput.value = settings.gmapsApiKey;
@@ -976,7 +992,8 @@ async function announceGpsPosition() {
 function announceHelp() {
   voice.speak(
     'Say "Hey Nav" followed by any place name — building, gate, canteen, hostel, library, anything. ' +
-    'Say "Stop" to cancel navigation. "Repeat" to hear the last instruction again. "Where am I" for your GPS position.',
+    'Say "Stop" to cancel navigation. "Repeat" to hear the last instruction again. "Where am I" for your GPS position. ' +
+    'To check your surroundings, ask "What is in front of me", "Is there any obstacle", or "How many people are near me".',
     { key: 'help', interrupt: true }
   );
 }
@@ -1015,21 +1032,33 @@ function handleVoiceStateChange(s) {
 
 function handleHazard(hazard) {
   if (!settings.hazardsEnabled) return;
-  let msg;
-  if (hazard.zone === 'critical') {
-    msg = `${hazard.label} ahead. ${hazard.guidance || 'Stop.'}`;
-    voice.playChime('hazard');
-  } else if (hazard.zone === 'near') {
-    msg = hazard.isHeuristic ? 'Possible steps ahead, slow down.' : `${hazard.label} nearby.`;
-  } else {
-    msg = `${hazard.label} in the distance.`;
+  const msg = SceneDescriber.hazardMessage(hazard);
+  const critical = hazard.zone === 'critical';
+  const cooldownMs = critical ? 2500 : hazard.zone === 'near' ? 4000 : 6000;
+  // The key includes side and "closing in", so a person who starts
+  // approaching, or switches sides, is announced again immediately
+  // instead of being swallowed by the cooldown of the earlier message.
+  const key = `hazard-${hazard.label}-${hazard.zone}-${hazard.direction || 'ahead'}-${hazard.approaching ? 'closer' : 'static'}`;
+  const spoke = voice.speak(msg, { key, cooldownMs, interrupt: critical });
+  // Same cooldown gate for the other channels so they don't buzz every tick. If speech is
+  // unavailable on this device (no synth), still fire them: haptics matter most there.
+  if (!spoke && voice.synth) return;
+
+  if (critical) voice.playChime('hazard');
+  // Non-speech channels: stereo-placed beep and a haptic pulse by urgency.
+  if (hazard.zone !== 'far' && !hazard.isHeuristic) {
+    voice.playSpatialCue(SceneDescriber.panFor(hazard.direction), hazard.zone);
   }
-  const cooldownMs = hazard.zone === 'critical' ? 2500 : hazard.zone === 'near' ? 4000 : 6000;
-  voice.speak(msg, {
-    key: `hazard-${hazard.label}-${hazard.zone}`,
-    cooldownMs,
-    interrupt: hazard.zone === 'critical',
-  });
+  voice.vibrate(critical ? [220, 90, 220, 90, 220] : hazard.zone === 'near' ? [160, 100, 160] : [70]);
+}
+
+// ------------------------------------------------------------------
+// On-device scene questions ("what's in front of me", "how many people")
+// ------------------------------------------------------------------
+
+function handleSceneQuery(kind) {
+  const answer = SceneDescriber.answerQuery(kind, hazards ? hazards.latestSnapshot : null);
+  voice.speak(answer, { key: `scene-${kind}`, interrupt: true, cooldownMs: 0 });
 }
 
 // ------------------------------------------------------------------
@@ -1070,17 +1099,20 @@ function _buildAiContext() {
   if (hazards?.latestSnapshot) {
     ctx.hazard  = hazards.latestSnapshot.hazard;
     ctx.traffic = hazards.latestSnapshot.traffic;
+    const sc = hazards.latestSnapshot.scene;
+    if (sc && sc.length) ctx.sceneText = SceneDescriber.describeScene(sc, 5);
   }
   return ctx;
 }
 
 async function handleAiQuery(question) {
   if (!aiAssistant) {
-    voice.speak("The AI assistant hasn't started yet. Tap Start first.", { key: 'ai-not-ready' });
+    handleSceneQuery(/traffic/i.test(question) ? 'traffic' : 'scene');
     return;
   }
   if (!aiAssistant.hasKey()) {
-    voice.speak('Add an OpenAI key in Settings to use this.', { key: 'ai-no-key', interrupt: true });
+    // No key: answer on-device from the detector instead of refusing.
+    handleSceneQuery(/traffic/i.test(question) ? 'traffic' : 'scene');
     return;
   }
   voice.speak('Let me check.', { key: 'ai-thinking', cooldownMs: 0 });

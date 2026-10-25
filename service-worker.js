@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nav-ar-v9';
+const CACHE_NAME = 'nav-ar-v10';
 const CORE_ASSETS = [
   './',
   './index.html',
@@ -13,6 +13,7 @@ const CORE_ASSETS = [
   './js/voice.js',
   './js/ar.js',
   './js/webxr-ar.js',
+  './js/scene.js',
   './js/hazards.js',
   './js/ai-assistant.js',
   './js/mini-map.js',

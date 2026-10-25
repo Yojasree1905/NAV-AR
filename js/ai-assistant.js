@@ -177,6 +177,7 @@ class AiAssistant {
     } else {
       lines.push('Nearest detected object: none currently in view');
     }
+    if (context.sceneText) lines.push(`Objects currently in view: ${context.sceneText}`);
     if (context.traffic) {
       const c = context.traffic.counts || {};
       const parts = Object.entries(c).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${k}${n > 1 ? 's' : ''}`);
