@@ -754,6 +754,8 @@ function _announceRouteProgress() {
 // ------------------------------------------------------------------
 
 const GPS_ARRIVAL_BASE_M = 8;
+const GPS_ARRIVAL_MAX_M = 25;
+const GPS_WEAK_ACCURACY_M = 40; // above this, a position is too uncertain to declare "arrived"
 let gpsNavActive = false;
 
 function _startGpsNav() {
@@ -763,8 +765,10 @@ function _startGpsNav() {
 }
 
 function _stopGpsNav() {
+  // Only ends route-following. Position tracking keeps running because the
+  // mini-map, the nearby-building labels and the GPS-course heading fallback
+  // all depend on it whether or not a route is active.
   gpsNavActive = false;
-  gpsTracker?.stop();
 }
 
 function _handleGpsUpdate(fix) {
@@ -787,7 +791,10 @@ function _handleGpsUpdate(fix) {
   if (!route?.polyline?.length) return;
 
   const { haversineDistance } = window.__venueHelpers;
-  const arrivalRadius = Math.max(GPS_ARRIVAL_BASE_M, (fix.accuracy || 0) * 0.6);
+  // Radius grows with GPS error, but is capped: it used to scale without limit,
+  // so a 100 m-accuracy fix counted as "arrived" from 60 m away.
+  const arrivalRadius = Math.min(GPS_ARRIVAL_MAX_M, Math.max(GPS_ARRIVAL_BASE_M, (fix.accuracy || 0) * 0.6));
+  const gpsTooWeak = (fix.accuracy || 0) > GPS_WEAK_ACCURACY_M;
 
   // Advance past points we've already passed
   while (route.pointIndex < route.polyline.length - 1) {
@@ -818,6 +825,12 @@ function _handleGpsUpdate(fix) {
   }
 
   // Arrival detection
+  if (isFinal && distToNext <= arrivalRadius && gpsTooWeak) {
+    voice.speak("You may be close, but GPS is weak here so I can't confirm you've arrived.", {
+      key: 'arrival-weak-gps', cooldownMs: 15000,
+    });
+    return;
+  }
   if (isFinal && distToNext <= arrivalRadius) {
     state.phase = 'arrived';
     els.routeControls.classList.add('hidden');

@@ -32,6 +32,9 @@ class GpsTracker {
   start({ onUpdate, onError } = {}) {
     this.onUpdate = onUpdate;
     this.onError = onError;
+    // Already watching: just refresh the callbacks. Calling watchPosition again
+    // overwrote watchId, leaking the first watch and handling every fix twice.
+    if (this.watchId !== null) return;
     if (!navigator.geolocation) {
       onError && onError(new Error('Geolocation not supported on this device/browser.'));
       return;

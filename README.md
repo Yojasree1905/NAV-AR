@@ -539,4 +539,4 @@ Voice commands (say "Hey Nav" first):
 
 If an OpenAI key is set, "what's ahead" and "describe the scene" use it (and are given the detected objects); otherwise the on-device answer is used.
 
-Tests: `node test/detection-tests.js` (logic, no browser) and `node test/e2e-detection.js` (headless Chromium; needs Playwright and the app served at `APP_URL`, default `http://localhost:8765/`; it replaces the COCO-SSD CDN script with a scripted stub).
+Tests: `node test/detection-tests.js` (logic, no browser), `node test/e2e-compass-location.js` (compass sources, GPS-course fallback, landmark placement, arrival handling; same headless setup) and `node test/e2e-detection.js` (headless Chromium; needs Playwright and the app served at `APP_URL`, default `http://localhost:8765/`; it replaces the COCO-SSD CDN script with a scripted stub).

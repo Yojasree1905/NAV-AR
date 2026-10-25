@@ -36,7 +36,9 @@ class ArOverlay {
     this._pitchBaseline = null; // calibrated from the first several readings, since people hold phones at different natural angles
     this._pitchSamples = [];
     this._absOrientationSensor = null;
-    this._lastGpsFix = null; // { lat, lon, t } — for GPS-course heading, the lowest-priority fallback
+    this._courseAnchor = null; // { lat, lon, t } — fix the GPS-course bearing is measured from (see updateGpsPosition)
+    this._headingAt = 0;       // when the last compass reading was accepted, to detect a sensor that has gone quiet
+    this._lastAbsoluteAt = 0;  // when the last NORTH-REFERENCED reading arrived (absolute event / iOS compass / sensor API)
     this._gpsCourseHeading = null;
     this._gpsCourseUpdatedAt = 0;
 
@@ -154,9 +156,12 @@ class ArOverlay {
       sensor.addEventListener('reading', () => {
         const heading = _quaternionToHeadingDeg(sensor.quaternion);
         if (heading !== null) {
+          const t = Date.now();
           this._applySmoothedHeading(heading);
           this.hasLiveHeading = true;
           this.headingSource = 'sensor-api';
+          this._headingAt = t;
+          this._lastAbsoluteAt = t; // AbsoluteOrientationSensor is north-referenced
           this._diag.sensorApiStatus = 'active';
         }
       });
@@ -257,20 +262,35 @@ class ArOverlay {
    */
   updateGpsPosition(lat, lon, accuracy) {
     const now = Date.now();
-    if (this._lastGpsFix) {
-      const dist = _haversine(this._lastGpsFix.lat, this._lastGpsFix.lon, lat, lon);
-      const dt = (now - this._lastGpsFix.t) / 1000;
-      // Require real, deliberate movement (not GPS jitter) and a
-      // reasonably fresh accuracy reading before trusting the bearing —
-      // a wildly inaccurate fix moving "3m" could easily just be noise.
-      const MIN_MOVEMENT_M = 3;
-      const MAX_ACCURACY_M = 25;
-      if (dist >= MIN_MOVEMENT_M && dt > 0 && dt < 30 && (accuracy == null || accuracy <= MAX_ACCURACY_M)) {
-        this._gpsCourseHeading = _initialBearing(this._lastGpsFix.lat, this._lastGpsFix.lon, lat, lon);
+    const MIN_MOVEMENT_M = 5;
+    const MAX_ACCURACY_M = 25;
+    const MAX_ANCHOR_AGE_S = 30;
+    // A fix with poor accuracy says nothing reliable about direction.
+    if (accuracy != null && accuracy > MAX_ACCURACY_M) return;
+
+    if (!this._courseAnchor) {
+      this._courseAnchor = { lat, lon, t: now };
+      return;
+    }
+    // The bearing is measured from an ANCHOR fix, not from the previous
+    // fix. Fixes arrive about once a second and a walker covers only ~1.3 m
+    // in that time, so comparing consecutive fixes never showed enough
+    // movement to trust (this fallback never fired while walking). The
+    // anchor only moves once real displacement has built up, and that
+    // displacement must beat the reported accuracy, so standing still with
+    // a few metres of GPS jitter doesn't invent a direction either.
+    const dist = _haversine(this._courseAnchor.lat, this._courseAnchor.lon, lat, lon);
+    const ageS = (now - this._courseAnchor.t) / 1000;
+    const threshold = Math.max(MIN_MOVEMENT_M, accuracy || 0);
+    if (dist >= threshold) {
+      if (ageS < MAX_ANCHOR_AGE_S) {
+        this._gpsCourseHeading = _initialBearing(this._courseAnchor.lat, this._courseAnchor.lon, lat, lon);
         this._gpsCourseUpdatedAt = now;
       }
+      this._courseAnchor = { lat, lon, t: now };
+    } else if (ageS >= MAX_ANCHOR_AGE_S) {
+      this._courseAnchor = { lat, lon, t: now }; // stood still a long time: measure afresh
     }
-    this._lastGpsFix = { lat, lon, t: now };
   }
 
   setDetectedObjects(boxes, vw, vh) {
@@ -293,17 +313,42 @@ class ArOverlay {
     // back over automatically if the sensor API's error handler clears
     // headingSource (see _startAbsoluteOrientationSensor above).
     this._diag.orientationEvents++;
-    if (this.headingSource !== 'sensor-api') {
+    const now = Date.now();
+
+    // Android Chrome fires BOTH events. 'deviceorientationabsolute' is
+    // referenced to magnetic north; plain 'deviceorientation' there is
+    // relative to wherever the phone happened to start, so its alpha is NOT
+    // a compass heading. Treating both the same made the heading flip
+    // between two unrelated values on every event. Rules now:
+    //   - north-referenced: absolute event, e.absolute === true (Firefox),
+    //     iOS webkitCompassHeading, or the sensor API
+    //   - relative-only readings are used only when nothing north-referenced
+    //     has arrived recently, and are labelled as such, so a device with
+    //     no magnetometer still gets a (non-north) heading but says so
+    const sensorApiFresh = this.headingSource === 'sensor-api' && (now - this._headingAt) < 2000;
+    if (!sensorApiFresh) {
+      let raw = null;
+      let kind = 'deviceorientation';
       if (typeof e.webkitCompassHeading === 'number') {
-        this._applySmoothedHeading(e.webkitCompassHeading);
-        this.hasLiveHeading = true;
-        this.headingSource = 'deviceorientation';
+        raw = e.webkitCompassHeading;
+        this._lastAbsoluteAt = now;
       } else if (e.alpha !== null) {
-        this._applySmoothedHeading((360 - e.alpha) % 360);
-        this.hasLiveHeading = true;
-        this.headingSource = 'deviceorientation';
+        if (e.type === 'deviceorientationabsolute' || e.absolute === true) {
+          raw = (360 - e.alpha) % 360;
+          this._lastAbsoluteAt = now;
+        } else if (now - this._lastAbsoluteAt > 2000) {
+          raw = (360 - e.alpha) % 360;
+          kind = 'deviceorientation-relative';
+        }
+        // else: a relative reading while a north-referenced one is active: ignore it
       } else {
         this._diag.alphaNullEvents++;
+      }
+      if (raw !== null) {
+        this._applySmoothedHeading(raw);
+        this.hasLiveHeading = true;
+        this.headingSource = kind;
+        this._headingAt = now;
       }
     }
 
@@ -400,15 +445,27 @@ class ArOverlay {
     // staleness — a bearing from 40 seconds ago while now standing still
     // is more likely to mislead than help).
     let heading = this.heading;
-    if ((!this.hasLiveHeading || heading === null) &&
+    // A compass that has stopped delivering readings (sensor stalled, page
+    // was backgrounded, permission pulled) used to stay "live" forever,
+    // freezing every label on the last heading with no warning.
+    const HEADING_STALE_MS = 3000;
+    const compassStale = this.hasLiveHeading && (Date.now() - this._headingAt) > HEADING_STALE_MS;
+    const compassLive = this.hasLiveHeading && !compassStale && heading !== null;
+    this._compassStale = compassStale;
+    if (!compassLive &&
         this._gpsCourseHeading !== null && Date.now() - this._gpsCourseUpdatedAt < 15000) {
       heading = this._gpsCourseHeading;
       this.heading = heading; // keep in sync — other code (e.g. webxr-ar.js's setCompassHeading feed) reads this.heading directly, and the debug readout below does too
       this.headingSource = 'gps-course';
-    } else if (!this.hasLiveHeading || heading === null) {
-      heading = 0;
-      if (this.headingSource === 'gps-course') this.headingSource = null; // was using a since-gone-stale GPS-course bearing — don't let the debug readout keep reporting it as a live source
-      this._drawNoCompassNotice(w, topOffset);
+    } else if (!compassLive) {
+      this.headingSource = null; // never keep reporting a dead or since-gone-stale source as live
+      if (compassStale && heading !== null) {
+        // keep the last known heading, but say plainly it is no longer updating
+        this._drawNoCompassNotice(w, topOffset, '⚠ Compass stopped updating');
+      } else {
+        heading = 0;
+        this._drawNoCompassNotice(w, topOffset);
+      }
     }
 
     // -- Update mini-compass --
@@ -438,7 +495,7 @@ class ArOverlay {
     // it was silently never visible. Restored, and now always includes
     // live heading so "is the compass working" is directly checkable
     // from a screenshot instead of something to guess at.
-    const sourceLabels = { 'sensor-api': ' [sensor-api]', deviceorientation: ' [deviceorientation]', 'gps-course': ' [gps-course]' };
+    const sourceLabels = { 'sensor-api': ' [sensor-api]', deviceorientation: ' [deviceorientation]', 'deviceorientation-relative': ' [RELATIVE - not north]', 'gps-course': ' [gps-course]' };
     const sourceTag = sourceLabels[this.headingSource] || '';
     // When there's no heading at all, append *why* — events:N is the
     // deviceorientation event count (0 means the browser/OS never sent
@@ -452,7 +509,9 @@ class ArOverlay {
       ` sensor-api:${d.sensorApiStatus}`;
     const compassLine = this.headingSource
       ? `Compass: ${Math.round(this.heading)}°${sourceTag}`
-      : `Compass: NO SIGNAL (assuming north)${diagTag}`;
+      : this._compassStale
+        ? `Compass: STALE, last ${Math.round(this.heading)}°${diagTag}`
+        : `Compass: NO SIGNAL (assuming north)${diagTag}`;
     this._drawDebugInfo(w, h, this.debugInfo ? `${compassLine} | ${this.debugInfo}` : compassLine);
 
     // 4. Ambient bubble
@@ -467,17 +526,18 @@ class ArOverlay {
   // 1. Perspective Road Pathway Ribbon (Images 1 & 2)
   // ------------------------------------------------------------------
   /** Small, unmissable warning drawn near the top of the frame whenever the compass has no live data — replaces the old silent "just assume north" fallback so a misaligned display is explained, not mysterious. */
-  _drawNoCompassNotice(w, topOffset) {
+  _drawNoCompassNotice(w, topOffset, text = '⚠ No compass — assuming north') {
     const { ctx } = this;
     ctx.save();
     ctx.font = '700 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.textAlign = 'center';
+    ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    const text = '⚠ No compass signal — assuming you face north';
     const textW = ctx.measureText(text).width;
     const boxW = textW + 20;
     const boxH = 24;
-    const boxX = w / 2 - boxW / 2;
+    // Left-anchored: the compass dial and mini-map sit at top-right, and a
+    // centred banner slid underneath them, cutting the text off.
+    const boxX = 12;
     const boxY = topOffset;
     ctx.beginPath();
     if (typeof ctx.roundRect === 'function') ctx.roundRect(boxX, boxY, boxW, boxH, 6);
@@ -485,7 +545,7 @@ class ArOverlay {
     ctx.fillStyle = 'rgba(180, 60, 40, 0.9)';
     ctx.fill();
     ctx.fillStyle = '#fff';
-    ctx.fillText(text, w / 2, boxY + boxH / 2 + 1);
+    ctx.fillText(text, boxX + 10, boxY + boxH / 2 + 1);
     ctx.restore();
   }
 
@@ -645,6 +705,10 @@ class ArOverlay {
    * similar bearings need to be stacked, not just spaced.
    */
   _drawLandmarkReticles(heading, w, h, topOffset, botOffset) {
+    // Cleared first, before any early return: when no label is on screen the
+    // old rects used to stay, so tapping where a label had been still
+    // "enlarged" a building that was no longer visible.
+    this._hitRects = [];
     if (this.currentLat === null || this.currentLon === null) return;
     const halfFov = this.fovH / 2;
     // Reduced from 200m after a report that labels were showing for
@@ -693,7 +757,6 @@ class ArOverlay {
     let lastRight = -Infinity;
     let cumulativeOffset = 0;
     let lastItemWasExpanded = false;
-    this._hitRects = []; // reset each frame; _drawOneLandmark fills this in as it draws
 
     for (const item of laidOut) {
       const expanded = item.target.isDest || item.target.id === this.selectedBuildingId;
