@@ -564,3 +564,7 @@ Tests: also `node test/e2e-hazard-loading.js` (detector loading failures and ret
 When the map is edited again, replace `map-hostels.osm` and run `node test/map-data-tests.js`: it lists every constant that no longer matches.
 
 Open items in the OSM data itself: the store is drawn twice (ways 1557664104 and 1572005880, one tagged `building=yes`, one `building=shophouse`), the name is spelled "convinience store", and it has no `shop=convenience` tag. The shop's door is not marked, so the app aims at the middle of the building.
+
+
+### Compass maths test
+`node test/compass-math-tests.js` checks the sensor-API heading against the W3C orientation definition (it was 90 degrees off before 2026-10-26).

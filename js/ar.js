@@ -1036,23 +1036,33 @@ class ArOverlay {
 // ------------------------------------------------------------------
 
 /**
- * Converts an AbsoluteOrientationSensor quaternion [x, y, z, w] (with
- * referenceFrame: 'screen') into a compass heading in degrees, where
- * 0 = the top of the screen pointing toward magnetic/true north
- * (matching the same convention as _onOrientation's deviceorientation-
- * based heading, so both sources are interchangeable to the rest of
- * this file). Standard quaternion-to-yaw extraction (rotation about the
- * Z axis), then converted from math-standard "counter-clockwise from
- * east" to compass-standard "clockwise from north". Returns null for a
- * malformed reading rather than a wrong number.
+ * Converts an AbsoluteOrientationSensor quaternion [x, y, z, w] into the
+ * compass heading (0 = north, clockwise) of the direction the BACK CAMERA
+ * faces, which is what the AR labels are placed against.
+ *
+ * The earlier version took the yaw of the device's X axis (its right edge),
+ * which is 90 degrees off from where the camera points: it read 90 with the
+ * phone facing north. Now: rotate the camera axis (device -Z) into the world
+ * frame (x = east, y = north, z = up). When the phone is held upright that
+ * vector is nearly horizontal and gives the heading directly. When the phone
+ * is tilted flat (camera pointing at the ground or sky) it is almost
+ * vertical and meaningless, so use the top-of-phone axis (device +Y) instead.
+ * Returns null for a malformed reading rather than a wrong number.
  */
 function _quaternionToHeadingDeg(q) {
   if (!q || q.length < 4) return null;
   const [x, y, z, w] = q;
-  const yawRad = Math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z));
-  let headingDeg = 90 - (yawRad * 180) / Math.PI;
-  headingDeg = ((headingDeg % 360) + 360) % 360;
-  return headingDeg;
+  if (![x, y, z, w].every(Number.isFinite)) return null;
+  // camera axis (-Z column) in world coordinates
+  const camE = -2 * (x * z + w * y);
+  const camN = -2 * (y * z - w * x);
+  // top-of-phone axis (+Y column)
+  const topE = 2 * (x * y - w * z);
+  const topN = 1 - 2 * (x * x + z * z);
+  const camHoriz = Math.hypot(camE, camN);
+  const [e, n] = camHoriz > 0.5 ? [camE, camN] : [topE, topN];
+  const deg = (Math.atan2(e, n) * 180) / Math.PI;
+  return ((deg % 360) + 360) % 360;
 }
 
 function _haversine(lat1, lon1, lat2, lon2) {
@@ -1130,3 +1140,5 @@ function _roundRect(ctx, x, y, w, h, r) {
 }
 
 window.ArOverlay = ArOverlay;
+
+ArOverlay.quaternionToHeadingDeg = _quaternionToHeadingDeg; // exposed for tests
