@@ -818,7 +818,12 @@ class ArOverlay {
       (this.gpsAccuracy === null || this.gpsAccuracy <= MAX_LABEL_GPS_ERROR_M);
     const others = (showOthers ? this.nearbyBuildings : [])
       .filter((b) => b.lat && b.lon && (!destTarget || b.name !== destTarget.name))
-      .map((b) => ({ ...b, id: b.id || b.name, dist: _haversine(this.currentLat, this.currentLon, b.lat, b.lon) }))
+      .map((b) => {
+        const fp = _footprintView(this.currentLat, this.currentLon, b.footprint);
+        // Footprint buildings are labelled by their real name ("J Block"), not the entrance they are routed to.
+        return { ...b, name: fp && b.buildingName ? b.buildingName : b.name, id: b.id || b.name, fp,
+          dist: fp ? fp.nearestM : _haversine(this.currentLat, this.currentLon, b.lat, b.lon) };
+      })
       .filter((b) => b.dist <= MAX_INCIDENTAL_DISTANCE);
 
     const allTargets = destTarget ? [destTarget, ...others] : others;
@@ -829,6 +834,18 @@ class ArOverlay {
         const bearing = _initialBearing(this.currentLat, this.currentLon, target.lat, target.lon);
         let rel = bearing - heading;
         rel = ((rel + 540) % 360) - 180;
+        // A building with an outline is "ahead" anywhere between its two
+        // visible edges, so snap to the camera centre when you face it.
+        if (target.fp && !target.fp.inside) {
+          const lo = ((target.fp.lo - heading + 540) % 360) - 180;
+          const hi = lo + target.fp.width;
+          if (lo <= 0 && hi >= 0) {
+            rel = 0;
+          } else {
+            const hiWrapped = ((hi + 540) % 360) - 180;
+            rel = Math.abs(lo) <= Math.abs(hiWrapped) ? lo : hiWrapped;
+          }
+        }
         const screenX = w / 2 + (rel / halfFov) * (w / 2);
         return { target, rel, screenX };
       })
@@ -1139,6 +1156,33 @@ function _quaternionToHeadingDeg(q) {
   return ((deg % 360) + 360) % 360;
 }
 
+/**
+ * Where a building outline appears from (lat, lon): the compass bearing of its
+ * left edge, its angular width, and the distance to its nearest corner.
+ * Returns null without an outline, and {inside:true} when the user is within
+ * it or it is wider than 180 degrees (then the point target is used instead).
+ */
+function _footprintView(lat, lon, pts) {
+  if (!Array.isArray(pts) || pts.length < 3 || lat === null) return null;
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const [yi, xi] = pts[i], [yj, xj] = pts[j];
+    if ((yi > lat) !== (yj > lat) && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  let nearestM = Infinity;
+  for (const [a, b] of pts) nearestM = Math.min(nearestM, _haversine(lat, lon, a, b));
+  if (inside) return { inside: true, nearestM: 0 };
+  const b0 = _initialBearing(lat, lon, pts[0][0], pts[0][1]);
+  let min = 0, max = 0;
+  for (const [a, b] of pts) {
+    const rel = ((_initialBearing(lat, lon, a, b) - b0 + 540) % 360) - 180;
+    if (rel < min) min = rel;
+    if (rel > max) max = rel;
+  }
+  if (max - min > 180) return { inside: true, nearestM };
+  return { inside: false, lo: (((b0 + min) % 360) + 360) % 360, width: max - min, nearestM };
+}
+
 function _haversine(lat1, lon1, lat2, lon2) {
   const R = 6371000;
   const toR = (d) => (d * Math.PI) / 180;
@@ -1216,3 +1260,5 @@ function _roundRect(ctx, x, y, w, h, r) {
 window.ArOverlay = ArOverlay;
 
 ArOverlay.quaternionToHeadingDeg = _quaternionToHeadingDeg; // exposed for tests
+
+ArOverlay.footprintView = _footprintView; // exposed for tests

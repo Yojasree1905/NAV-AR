@@ -427,6 +427,8 @@ function _getKnownCampusPlaces() {
         lon: node.lon,
         isAnchor: true,
         purpose: node.purpose || '',
+        footprint: node.footprint || null,
+        buildingName: node.buildingName || null,
       });
     }
   }

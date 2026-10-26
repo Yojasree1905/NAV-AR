@@ -54,6 +54,20 @@
     convenience_store: { lat: 12.9683800, lon: 79.1593700 }, // Centroid of the store building in map-hostels.osm (2026-10-26). REPLACES the old (12.9679250, 79.1595513) "GPS-walked" point, which is 54 m south-east of the real building, beside G Block. If you survey the shop door, put that here instead.
   };
 
+
+  // Building outlines from map-hostels.osm (2026-10-26 survey), as [lat, lon]
+  // corner lists. A label placed on a single entrance point is wrong whenever
+  // you stand close to a big building or face a different side of it (field
+  // test 2026-10-26: compass was within ~6 deg of the building the user faced,
+  // but the point targets were 25-150 deg off). With an outline, a building is
+  // "ahead" whenever the camera points anywhere between its two visible edges.
+  const FOOTPRINTS = {
+    hostel_g:          { name: 'G Block',           way: 1095528323, pts: [[12.9682724, 79.1595847], [12.9682658, 79.1597832], [12.9678064, 79.1597671], [12.9678130, 79.1595686]] },
+    hostel_h:          { name: 'H Block',           way: 1095528324, pts: [[12.9677588, 79.1592950], [12.9676105, 79.1597362], [12.9674436, 79.1596772], [12.9675919, 79.1592360]] },
+    hostel_j:          { name: 'J Block',           way: 1557664366, pts: [[12.9683125, 79.1590178], [12.9683003, 79.1593579], [12.9680429, 79.1593526], [12.9680483, 79.1590861], [12.9680495, 79.1590275]] },
+    convenience_store: { name: 'Convenience Store', way: 1557664104, pts: [[12.9683956, 79.1593190], [12.9683914, 79.1593509], [12.9683906, 79.1593726], [12.9683885, 79.1594264], [12.9683560, 79.1594249], [12.9683602, 79.1593204]] },
+  };
+
   // Scoped down to exactly this set 2026-09-11, per explicit request.
   // The wider campus list (Technology Tower, SJT, PRP, SMV, Library,
   // Main Block, A/B Block, MGB, 3A Gate, Main University Gate, Foodys,
@@ -76,6 +90,10 @@
     if (coords) {
       node.lat = coords.lat;
       node.lon = coords.lon;
+    }
+    if (FOOTPRINTS[node.id]) {
+      node.footprint = FOOTPRINTS[node.id].pts;
+      node.buildingName = FOOTPRINTS[node.id].name;
     }
   }
 

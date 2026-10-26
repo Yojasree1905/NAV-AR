@@ -571,3 +571,6 @@ Open items in the OSM data itself: the store is drawn twice (ways 1557664104 and
 
 ### Compass field test (Settings, bottom of "Nearby Building Labels")
 Stand still facing a landmark, pick it in the list, then tap **Align** (corrects the compass to it, kept across restarts), **Log** (records sensor heading, GPS, expected bearing and error without changing anything), **Copy log** or **Reset**. Tests: `node test/compass-math-tests.js`, `node test/e2e-calibration.js`.
+
+### Building outlines for labels
+G, H, J and the convenience store carry their OSM outlines (`FOOTPRINTS` in `js/venues/outdoor-hostels.js`). A building label sits at screen centre whenever the camera points anywhere between the building's two visible edges, instead of at one entrance point. The route destination still uses the entrance. Tests: `node test/footprint-tests.js`, `node test/e2e-footprint.js`.
