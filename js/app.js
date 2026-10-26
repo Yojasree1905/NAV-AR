@@ -31,6 +31,7 @@ const settings = {
   audioChimes: true,
   hazardsEnabled: true,
   vibrationEnabled: true,
+  buildingLabels: true,
   routingProvider: 'osrm',  // 'osrm' | 'ors' | 'gmaps'
   orsApiKey: '',
   gmapsApiKey: '',
@@ -87,6 +88,7 @@ function init() {
   els.audioChimesToggle  = document.getElementById('audio-chimes-toggle');
   els.hazardToggle       = document.getElementById('hazard-toggle');
   els.vibrationToggle    = document.getElementById('vibration-toggle');
+  els.buildingLabelsToggle = document.getElementById('building-labels-toggle');
   els.testVoiceBtn       = document.getElementById('test-voice-btn');
   els.openaiKeyInput     = document.getElementById('openai-key-input');
   els.saveOpenaiKeyBtn   = document.getElementById('save-openai-key-btn');
@@ -173,6 +175,14 @@ function init() {
     });
   }
 
+  if (els.buildingLabelsToggle) {
+    els.buildingLabelsToggle.addEventListener('change', (e) => {
+      settings.buildingLabels = e.target.checked;
+      if (ar) ar.showBuildingLabels = settings.buildingLabels;
+      try { localStorage.setItem('navassist_labels', String(settings.buildingLabels)); } catch (_) {}
+    });
+  }
+
   if (els.vibrationToggle) {
     els.vibrationToggle.addEventListener('change', (e) => {
       settings.vibrationEnabled = e.target.checked;
@@ -186,9 +196,11 @@ function init() {
     els.hazardToggle.addEventListener('change', (e) => {
       settings.hazardsEnabled = e.target.checked;
       try { localStorage.setItem('navassist_hazards', String(settings.hazardsEnabled)); } catch (_) {}
-      if (hazards) {
-        settings.hazardsEnabled ? hazards.start(4) : hazards.stop();
-        if (!settings.hazardsEnabled) ar && ar.setDetectedObjects([], 0, 0);
+      if (settings.hazardsEnabled) {
+        if (camStream) _initHazards(); // creates and loads it if it never started, or just resumes
+      } else if (hazards) {
+        hazards.stop();
+        ar && ar.setDetectedObjects([], 0, 0);
       }
     });
   }
@@ -264,6 +276,7 @@ async function _autoStartCamera() {
   resizeCanvas();
   ar = new ArOverlay(els.overlay);
   ar.setFov(settings.cameraFovH);
+  ar.showBuildingLabels = settings.buildingLabels;
   ar.start();
 
   if (typeof MiniMapController !== 'undefined') {
@@ -286,6 +299,8 @@ function _loadSettings() {
     if (c !== null) settings.audioChimes = c === 'true';
     const h = localStorage.getItem('navassist_hazards');
     if (h !== null) settings.hazardsEnabled = h === 'true';
+    const bl = localStorage.getItem('navassist_labels');
+    if (bl !== null) settings.buildingLabels = bl === 'true';
     const vb = localStorage.getItem('navassist_vibration');
     if (vb !== null) settings.vibrationEnabled = vb === 'true';
     const fov = localStorage.getItem('navassist_fov');
@@ -307,6 +322,7 @@ function _syncSettingsUI() {
   if (els.audioChimesToggle) els.audioChimesToggle.checked = settings.audioChimes;
   if (els.hazardToggle)      els.hazardToggle.checked = settings.hazardsEnabled;
   if (els.vibrationToggle)   els.vibrationToggle.checked = settings.vibrationEnabled;
+  if (els.buildingLabelsToggle) els.buildingLabelsToggle.checked = settings.buildingLabels;
   if (els.routingProviderSel) els.routingProviderSel.value = settings.routingProvider;
   if (els.orsKeyInput)   els.orsKeyInput.value = settings.orsApiKey;
   if (els.gmapsKeyInput) els.gmapsKeyInput.value = settings.gmapsApiKey;
@@ -533,6 +549,7 @@ async function startAssistant() {
     resizeCanvas();
     ar = new ArOverlay(els.overlay);
     ar.setFov(settings.cameraFovH);
+  ar.showBuildingLabels = settings.buildingLabels;
     ar.start();
   }
   if (!miniMap && typeof MiniMapController !== 'undefined') {
@@ -579,6 +596,17 @@ async function startAssistant() {
 
   // Hazard detector
   if (camStream && settings.hazardsEnabled) {
+    await _initHazards();
+    setStatus('Say "Hey Nav" or tap mic');
+  }
+}
+
+let _hazardLoading = false;
+
+/** Creates the detector (once) and loads its model, retrying on failure. */
+async function _initHazards(attempt = 1) {
+  if (!els.video) return;
+  if (!hazards) {
     hazards = new HazardDetector({
       videoEl: els.video,
       onHazard: handleHazard,
@@ -586,25 +614,42 @@ async function startAssistant() {
       onDetections: (boxes, vw, vh) => {
         ar && ar.setDetectedObjects(boxes, vw, vh);
         const summary = boxes.length ? boxes.map((b) => b.label).join(',') : 'none in view';
-        ar && ar.setDebugInfo(`Hazard model: OK | ${boxes.length} objects (${summary})`);
+        const mode = hazards.backend === 'cpu' ? ' (slow mode)' : '';
+        ar && ar.setDebugInfo(`Hazard model: OK${mode} | ${boxes.length} objects (${summary})`);
       },
     });
-    setStatus('Loading hazard detector…');
-    try {
-      await hazards.load();
-      hazards.start(4);
-      ar && ar.setDebugInfo('Hazard model: OK | objects: 0 (none in view)');
-    } catch (err) {
-      console.error('Hazard model failed:', err);
-      ar && ar.setDebugInfo('Hazard model: FAILED — see console');
+  }
+  if (hazards.model) { if (settings.hazardsEnabled) hazards.start(4); return; }
+  if (_hazardLoading) return;
+  _hazardLoading = true;
+  setStatus('Loading hazard detector…');
+  ar && ar.setDebugInfo(`Hazard model: loading${attempt > 1 ? ` (try ${attempt})` : ''}…`);
+  try {
+    await hazards.load();
+    _hazardLoading = false;
+    if (settings.hazardsEnabled) hazards.start(4);
+    ar && ar.setDebugInfo('Hazard model: OK | objects: 0 (none in view)');
+    if (attempt > 1) voice.speak('Obstacle detection is now working.', { key: 'hazard-recovered', interrupt: true });
+  } catch (err) {
+    _hazardLoading = false;
+    console.error('Hazard model failed:', err);
+    // Show the actual reason on screen instead of "see console", which a
+    // phone user can't open. The row is shortened to fit by the debug drawer.
+    ar && ar.setDebugInfo(`Hazard model: FAILED - ${err.message}`);
+    if (attempt === 1) {
       voice.speak(
-        'Obstacle detection could not start. Voice navigation still works, but there will be no hazard warnings this session.',
+        'Obstacle detection could not start. It needs an internet connection the first time. I will keep trying. Voice navigation still works meanwhile.',
         { key: 'hazard-load-failed', interrupt: true }
       );
     }
-    setStatus('Say "Hey Nav" or tap mic');
+    if (attempt < 5) setTimeout(() => { if (settings.hazardsEnabled) _initHazards(attempt + 1); }, 8000 * attempt);
   }
 }
+
+// Coming back online is the most likely moment a failed load would succeed.
+window.addEventListener('online', () => {
+  if (hazards && !hazards.model && settings.hazardsEnabled) _initHazards(2);
+});
 
 async function _refreshNearbyPois() {
   try {
@@ -912,11 +957,19 @@ function _restoreFrom2dFallback() {
   voice.speak('Ground-locked AR off.', { key: 'webxr-off', interrupt: true, cooldownMs: 500 });
 }
 
-function _handleGpsError() {
-  voice.speak(
-    "I can't get a GPS signal. Make sure location access is allowed and you're outdoors.",
-    { key: 'gps-error', cooldownMs: 15000 }
-  );
+function _handleGpsError(err) {
+  const code = err && err.code; // 1 permission denied, 2 position unavailable, 3 timeout
+  if (code === 3 && state.outdoorPosition && Date.now() - (state.outdoorPosition.timestamp || 0) < 60000) {
+    // A watch reports TIMEOUT whenever no NEW fix arrives within its timeout
+    // window (standing still, or a momentary gap), even though a good fix from
+    // seconds ago is on hand. That used to announce "I can't get a GPS signal"
+    // every 15 s to a person who simply wasn't moving.
+    return;
+  }
+  const msg = code === 1
+    ? 'Location access is blocked. Allow location for this site in your browser settings, then reload.'
+    : "I can't get a GPS signal. Make sure location access is allowed and you're outdoors.";
+  voice.speak(msg, { key: 'gps-error', cooldownMs: 15000 });
 }
 
 // ------------------------------------------------------------------

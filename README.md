@@ -540,3 +540,14 @@ Voice commands (say "Hey Nav" first):
 If an OpenAI key is set, "what's ahead" and "describe the scene" use it (and are given the detected objects); otherwise the on-device answer is used.
 
 Tests: `node test/detection-tests.js` (logic, no browser), `node test/e2e-compass-location.js` (compass sources, GPS-course fallback, landmark placement, arrival handling; same headless setup) and `node test/e2e-detection.js` (headless Chromium; needs Playwright and the app served at `APP_URL`, default `http://localhost:8765/`; it replaces the COCO-SSD CDN script with a scripted stub).
+
+### If obstacle detection says FAILED
+
+The bottom-left debug line now names the stage that failed, e.g. `Hazard model: FAILED - downloading model: Failed to fetch`:
+`loading TensorFlow.js` / `loading COCO-SSD` (script hosts blocked: cdnjs, then jsDelivr, then unpkg are tried), `starting tensor backend` (WebGL unavailable: falls back to a slower CPU mode, shown as "slow mode"), `downloading model` (the model files come from Google's servers and need internet the first time). It retries automatically (also when the phone comes back online) and announces when it works.
+
+### Nearby building labels
+
+Labels are placed from GPS position plus compass direction only, so they appear even when a wall hides the building; each tag shows its distance. They are hidden when GPS error is above 30 m, and can be switched off in Settings (the navigation destination always shows). A label is only as accurate as the coordinate saved for that place: re-capture a coordinate with the in-app "Calibrate waypoints" panel standing at the spot.
+
+Tests: also `node test/e2e-hazard-loading.js` (detector loading failures and retries).

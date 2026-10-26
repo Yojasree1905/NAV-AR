@@ -37,6 +37,8 @@ class ArOverlay {
     this._pitchSamples = [];
     this._absOrientationSensor = null;
     this._courseAnchor = null; // { lat, lon, t } — fix the GPS-course bearing is measured from (see updateGpsPosition)
+    this.showBuildingLabels = true; // user setting; the active destination is always drawn
+    this.gpsAccuracy = null;        // metres, latest fix; labels are suppressed when too uncertain to place
     this._headingAt = 0;       // when the last compass reading was accepted, to detect a sensor that has gone quiet
     this._lastAbsoluteAt = 0;  // when the last NORTH-REFERENCED reading arrived (absolute event / iOS compass / sensor API)
     this._gpsCourseHeading = null;
@@ -262,6 +264,7 @@ class ArOverlay {
    */
   updateGpsPosition(lat, lon, accuracy) {
     const now = Date.now();
+    this.gpsAccuracy = accuracy == null ? null : accuracy;
     const MIN_MOVEMENT_M = 5;
     const MAX_ACCURACY_M = 25;
     const MAX_ANCHOR_AGE_S = 30;
@@ -733,7 +736,13 @@ class ArOverlay {
       }
     }
 
-    const others = this.nearbyBuildings
+    // Incidental labels are placed purely from GPS position + compass, so they
+    // can't know about walls. Hide them when the user turns them off, or when
+    // the GPS error is so large (> 30 m) that "H Block is that way" is a guess.
+    const MAX_LABEL_GPS_ERROR_M = 30;
+    const showOthers = this.showBuildingLabels &&
+      (this.gpsAccuracy === null || this.gpsAccuracy <= MAX_LABEL_GPS_ERROR_M);
+    const others = (showOthers ? this.nearbyBuildings : [])
       .filter((b) => b.lat && b.lon && (!destTarget || b.name !== destTarget.name))
       .map((b) => ({ ...b, id: b.id || b.name, dist: _haversine(this.currentLat, this.currentLon, b.lat, b.lon) }))
       .filter((b) => b.dist <= MAX_INCIDENTAL_DISTANCE);
@@ -785,7 +794,9 @@ class ArOverlay {
     const { ctx } = this;
     const dist = target.dist;
     const distText = dist < 1000 ? `${Math.round(dist)} m` : `${(dist / 1000).toFixed(1)} km`;
-    const nameText = target.name || 'Building';
+    const baseName = target.name || 'Building';
+    // Small tags carry the distance so it is obvious a label is for something 40 m away, not in the room.
+    const nameText = expanded ? baseName : `${baseName} · ${distText}`;
     const color = target.isDest ? '#00e5cc' : '#ffffff';
 
     ctx.save();

@@ -153,6 +153,27 @@ const M_LON = 1 / (111320 * Math.cos(LAT0 * Math.PI / 180)); // degrees per metr
   x = await screenX('Far');
   check('building 400 m away is not shown (60 m limit)', x === null, x);
 
+  // ===== 5b. label controls =====
+  console.log('5b. building label controls');
+  await absHeading(90); await place('East', 90, 40);
+  check('label visible by default', (await screenX('East')) !== null);
+  await page.evaluate(() => { ar.showBuildingLabels = false; });
+  check('labels switched off -> hidden', (await screenX('East')) === null);
+  // the active destination must still show with labels off
+  await page.evaluate(([lat0, lon0]) => {
+    ar.setRoute([[lat0, lon0], [lat0, lon0 + 40 / (111320 * Math.cos(lat0 * Math.PI / 180))]], lat0, lon0, 'Dest', 40);
+  }, [LAT0, LON0]);
+  await page.waitForTimeout(200);
+  check('...but the navigation destination still shows', (await page.evaluate(() => ar._hitRects.length)) > 0);
+  await page.evaluate(() => { ar.clearRoute(); ar.showBuildingLabels = true; });
+  await geo(LAT0, LON0, 60); await page.waitForTimeout(900);
+  await place('East', 90, 40);
+  check('GPS accuracy 60 m -> labels hidden (position too uncertain)', (await screenX('East')) === null);
+  await geo(LAT0, LON0, 8); await page.waitForTimeout(900);
+  await place('East', 90, 40);
+  check('accuracy back to 8 m -> label returns', (await screenX('East')) !== null);
+  const tagText = await page.evaluate(() => { const c = document.createElement('canvas').getContext('2d'); return null; });
+
   // ===== 6. location handling =====
   console.log('6. location handling');
   const calls = await page.evaluate(() => ({ ...window.__geo }));
@@ -175,12 +196,22 @@ const M_LON = 1 / (111320 * Math.cos(LAT0 * Math.PI / 180)); // degrees per metr
   }, [LAT0, LON0, M_LAT]);
   check('40 m from the destination with a 100 m-accuracy fix is NOT "arrived"', arrived !== 'arrived', arrived);
 
-  // permission denied
-  const spoken = [];
-  await page.evaluate(() => { window.__sp = []; const o = voice.speak.bind(voice); voice.speak = (t, x) => { const r = o(t, x); if (r) window.__sp.push(t); return r; }; });
-  await page.evaluate(() => _handleGpsError());
-  const sp = await page.evaluate(() => window.__sp);
-  check('GPS error speaks a clear message', sp.some((t) => /can't get a GPS signal/.test(t)), JSON.stringify(sp));
+  // GPS errors
+  await page.evaluate(() => { window.__sp = []; const o = voice.speak.bind(voice); voice.speak = (t, x) => { const r = o(t, x); if (r) window.__sp.push(t); return r; }; voice.lastSpokenAt.delete('gps-error'); });
+  const speakErr = async (err, fix) => page.evaluate(([e, f]) => {
+    window.__sp.length = 0; voice.lastSpokenAt.delete('gps-error');
+    state.outdoorPosition = f ? { lat: 1, lon: 1, accuracy: 5, timestamp: Date.now() - f } : null;
+    _handleGpsError(e);
+    return window.__sp.slice();
+  }, [err, fix]);
+  let r = await speakErr({ code: 3 }, 5000);
+  check('timeout while a 5 s-old fix exists stays silent', r.length === 0, JSON.stringify(r));
+  r = await speakErr({ code: 3 }, 120000);
+  check('timeout with only a 2 min-old fix is announced', r.some((x) => /can't get a GPS signal/.test(x)), JSON.stringify(r));
+  r = await speakErr({ code: 3 }, null);
+  check('timeout with no fix at all is announced', r.some((x) => /can't get a GPS signal/.test(x)), JSON.stringify(r));
+  r = await speakErr({ code: 1 }, 5000);
+  check('permission denied gives a specific, actionable message', r.some((x) => /Location access is blocked/.test(x)), JSON.stringify(r));
 
   console.log('page errors:', errors.length ? errors.join(' | ') : 'none');
   check('no JavaScript errors', errors.length === 0);

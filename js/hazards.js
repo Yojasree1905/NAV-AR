@@ -117,6 +117,46 @@ function trafficLevelFor(avgCount) {
   return 'HIGH';
 }
 
+// Where to look if the <script> tags in index.html (cdnjs) didn't deliver.
+const SCRIPT_FALLBACKS = {
+  tf: [
+    'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js',
+    'https://unpkg.com/@tensorflow/tfjs@4.22.0/dist/tf.min.js',
+  ],
+  cocoSsd: [
+    'https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js',
+    'https://unpkg.com/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js',
+  ],
+};
+
+function loadScript(src, timeoutMs = 20000) {
+  return new Promise((resolve, reject) => {
+    const el = document.createElement('script');
+    const timer = setTimeout(() => { el.remove(); reject(new Error('timed out')); }, timeoutMs);
+    el.src = src;
+    el.async = true;
+    el.onload = () => { clearTimeout(timer); resolve(); };
+    el.onerror = () => { clearTimeout(timer); el.remove(); reject(new Error('blocked or unreachable')); };
+    document.head.appendChild(el);
+  });
+}
+
+/** Makes sure window[name] exists, trying each fallback URL in turn. */
+async function ensureGlobal(name, urls) {
+  if (typeof window[name] !== 'undefined') return;
+  const failures = [];
+  for (const url of urls) {
+    try {
+      await loadScript(url);
+      if (typeof window[name] !== 'undefined') return;
+      failures.push('loaded but missing ' + name);
+    } catch (e) {
+      failures.push(new URL(url).host + ' ' + e.message);
+    }
+  }
+  throw new Error(`could not load (${failures.join('; ')})`);
+}
+
 class HazardDetector {
   constructor({ videoEl, onHazard, onTrafficUpdate, onDetections }) {
     this.videoEl = videoEl;
@@ -124,6 +164,8 @@ class HazardDetector {
     this.onTrafficUpdate = onTrafficUpdate; // ({level, counts, totalVehicles}) => void
     this.onDetections = onDetections; // (list, videoWidth, videoHeight) => void -- ALL boxes, for the visual outline overlay
     this.model = null;
+    this.backend = null;    // 'webgl' | 'cpu' once started
+    this.loadStage = null;  // where load() got to, for error messages
     this.running = false;
     this._vehicleCountHistory = [];
     this._tracks = [];      // per-object tracks, used to tell "getting closer" from "static"
@@ -136,19 +178,60 @@ class HazardDetector {
     };
   }
 
+  /**
+   * Loads TensorFlow.js and COCO-SSD. Every stage can fail on a real phone
+   * (blocked or slow CDN, no WebGL, model host unreachable), and the old
+   * code reported all of them as one opaque failure. Now each stage has a
+   * fallback where one exists, and a failure says WHICH stage broke:
+   *   scripts : cdnjs tags in index.html first, then jsdelivr, then unpkg
+   *   backend : WebGL first, CPU if WebGL isn't usable (slower, still works)
+   *   model   : lite model first, then the full model
+   * The thrown Error's message is "<stage>: <reason>", shown on screen.
+   */
   async load() {
-    if (typeof cocoSsd === 'undefined') {
-      throw new Error('cocoSsd library not loaded');
-    }
+    this.loadStage = 'starting';
     try {
-      this.model = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
-    } catch (_) {
-      this.model = await cocoSsd.load();
+      this.loadStage = 'loading TensorFlow.js';
+      await ensureGlobal('tf', SCRIPT_FALLBACKS.tf);
+      this.loadStage = 'loading COCO-SSD';
+      await ensureGlobal('cocoSsd', SCRIPT_FALLBACKS.cocoSsd);
+      this.loadStage = 'starting tensor backend';
+      await this._initBackend();
+      this.loadStage = 'downloading model';
+      try {
+        this.model = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
+      } catch (_) {
+        this.model = await cocoSsd.load();
+      }
+      this.loadStage = 'ready';
+    } catch (err) {
+      const reason = String((err && err.message) || err || 'unknown error').replace(/\s+/g, ' ').slice(0, 80);
+      const wrapped = new Error(`${this.loadStage}: ${reason}`);
+      wrapped.stage = this.loadStage;
+      throw wrapped;
     }
   }
 
+  async _initBackend() {
+    const t = window.tf;
+    if (!t || typeof t.setBackend !== 'function') return; // older bundle: it picks its own
+    for (const name of ['webgl', 'cpu']) {
+      try {
+        if (await t.setBackend(name)) {
+          if (typeof t.ready === 'function') await t.ready();
+          this.backend = name;
+          return;
+        }
+      } catch (_) { /* try the next backend */ }
+    }
+    throw new Error('no usable TensorFlow backend');
+  }
+
   start(fps = 4) {
+    if (this.running) return; // already looping: a second loop would double the work
     this.running = true;
+    // The CPU backend is several times slower; asking for 4 fps just queues up work.
+    if (this.backend === 'cpu') fps = Math.min(fps, 1.5);
     const interval = 1000 / fps;
     const loop = async () => {
       if (!this.running) return;
