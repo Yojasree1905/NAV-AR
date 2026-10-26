@@ -574,3 +574,6 @@ Stand still facing a landmark, pick it in the list, then tap **Align** (corrects
 
 ### Building outlines for labels
 G, H, J and the convenience store carry their OSM outlines (`FOOTPRINTS` in `js/venues/outdoor-hostels.js`). A building label sits at screen centre whenever the camera points anywhere between the building's two visible edges, instead of at one entrance point. The route destination still uses the entrance. Tests: `node test/footprint-tests.js`, `node test/e2e-footprint.js`.
+
+### Route ribbon and compass correction
+The route ribbon is projected on the ground like a camera sees it (`_groundPath` in `js/ar.js`); when the route ahead is outside the view, a "Turn left / right / around" arrow shows instead of a sideways ribbon. The compass **Align** correction now lasts for the current session only and does nothing when you are already facing the building. Tests: `node test/path-tests.js`.

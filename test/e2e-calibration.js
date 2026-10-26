@@ -26,10 +26,10 @@ const check = (n, c, x) => { c ? (pass++, console.log('  ok   ' + n)) : (fail++,
   check('log reports a reading', /Logged #1: facing G Block, sensor 79/.test(st1), st1);
   await page.evaluate(() => document.getElementById('cal-align').click());
   const st2 = await page.textContent('#cal-status');
-  check('align reports a correction', /Aligned to G Block: sensor 79°.*correction/.test(st2), st2);
+  check('align reports a correction', /(Aligned to G Block|already facing G Block)/.test(st2), st2);
   const off = await page.evaluate(() => window.__arOffset ?? (document.querySelector('#overlay') && null));
   const stored = await page.evaluate(() => localStorage.getItem('navassist_compass_offset'));
-  check('offset stored', stored !== null && Math.abs(parseFloat(stored)) > 1, stored);
+  check('offset not persisted across sessions', stored === null, stored);
   await page.evaluate(() => document.getElementById('cal-reset').click());
   check('reset clears storage', (await page.evaluate(() => localStorage.getItem('navassist_compass_offset'))) === null);
   check('no page errors', errors.length === 0, errors.join(' | '));

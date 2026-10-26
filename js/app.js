@@ -202,8 +202,8 @@ function init() {
   calBtn('cal-align', () => {
     calFill(); const t = calTarget();
     if (!ar || !t) return calSay('Start the camera and pick a landmark first.');
-    const r = ar.calibrateTo(t.lat, t.lon);
-    calSay(r.ok ? `Aligned to ${t.name}: sensor ${Math.round(r.raw)}°, should be ${Math.round(r.bearing)}°, correction ${r.offset > 0 ? '+' : ''}${Math.round(r.offset)}° (GPS accuracy ${ar.gpsAccuracy == null ? '?' : Math.round(ar.gpsAccuracy) + ' m'}).` : r.reason);
+    const r = ar.calibrateTo(t.lat, t.lon, t.footprint);
+    calSay(r.ok && r.insideOutline ? `You are already facing ${t.name} (the compass points inside its outline), so no correction is needed.` : r.ok ? `Aligned to ${t.name} (this session only; reset if labels get worse): sensor ${Math.round(r.raw)}°, should be ${Math.round(r.bearing)}°, correction ${r.offset > 0 ? '+' : ''}${Math.round(r.offset)}° (GPS accuracy ${ar.gpsAccuracy == null ? '?' : Math.round(ar.gpsAccuracy) + ' m'}).` : r.reason);
   });
   calBtn('cal-log', () => {
     calFill(); const t = calTarget();

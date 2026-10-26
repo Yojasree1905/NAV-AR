@@ -36,7 +36,7 @@ Object.assign(ar, { heading: 79, hasLiveHeading: true, _headingAt: Date.now(), h
 // G Block entrance is ~36 degrees from here; sensor says 79 -> correction about -43
 const r = ar.calibrateTo(12.9681514, 79.1595125);
 check(`align: bearing ${r.bearing.toFixed(0)} raw 79 offset ${r.offset.toFixed(0)}`, r.ok && Math.abs(r.bearing - 79 - r.offset) < 0.01 && r.offset < -30 && r.offset > -50);
-check('offset persisted', Math.abs(parseFloat(ctx.localStorage.getItem('navassist_compass_offset')) - r.offset) < 1e-9);
+check('offset is session-only (not stored)', ctx.localStorage.getItem('navassist_compass_offset') === null);
 const rec = ar.logReading('G Block', 12.9681514, 79.1595125);
 check('log records error + offset', rec && rec.facing === 'G Block' && Math.abs(rec.errorDeg - r.offset) < 0.2 && rec.calibrationOffset === Math.round(r.offset * 10) / 10 && ar.fieldLog.length === 1);
 ar.gpsAccuracy = null;
@@ -47,7 +47,13 @@ ar.gpsAccuracy = 8;
 const keepLat = ar.currentLat; ar.setBuildingList([{ name: 'x' }]);
 check('setBuildingList does not move the user', ar.currentLat === keepLat && ar.nearbyBuildings.length === 1);
 ar.resetCalibration();
-check('reset clears', ar.compassOffset === 0 && ctx.localStorage.getItem('navassist_compass_offset') === null);
+check('reset clears', ar.compassOffset === 0);
+// aligning to a building outline while already facing it must NOT add a correction
+const gFoot = [[12.9681514, 79.159575], [12.9681514, 79.15985], [12.96835, 79.15985], [12.96835, 79.159575]];
+ar.currentLat = 12.9680; ar.currentLon = 79.1594; ar.heading = 40; ar._headingAt = Date.now();
+const vv = ctx.ArOverlay.footprintView(12.9680, 79.1594, gFoot);
+const rr = ar.calibrateTo(12.96825, 79.15971, gFoot);
+check(`facing inside outline (${vv.lo.toFixed(0)}-${(vv.lo + vv.width).toFixed(0)}) -> offset 0`, rr.ok && rr.offset === 0 && rr.insideOutline === true, JSON.stringify(rr));
 ar._headingAt = Date.now() - 5000;
 check('stale compass refuses to align/log', !ar.calibrateTo(12.9681514, 79.1595125).ok && ar.logReading('x', 1, 1) === null);
 

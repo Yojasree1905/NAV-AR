@@ -31,7 +31,9 @@ class ArOverlay {
     // Orientation
     this.heading = null;
     this.compassOffset = 0;   // degrees added to the sensor heading when placing labels (field calibration)
-    try { const o = parseFloat(localStorage.getItem('navassist_compass_offset')); if (Number.isFinite(o)) this.compassOffset = o; } catch (_) {}
+    // A correction from an earlier session is discarded on purpose: the field test showed the raw
+    // sensor within ~6 degrees, and a leftover +25 degree Align skewed every label and arrow.
+    try { localStorage.removeItem('navassist_compass_offset'); } catch (_) {}
     this.fieldLog = [];       // readings recorded by the field-test panel
     this.hasLiveHeading = false;
     this.headingSource = null; // 'sensor-api' | 'deviceorientation' | 'gps-course' | null — which method actually delivered a reading, shown in the debug readout
@@ -245,16 +247,29 @@ class ArOverlay {
    * offset = true bearing to the landmark - what the sensor says.
    * Returns {ok, offset, bearing, raw} or {ok:false, reason}.
    */
-  calibrateTo(lat, lon) {
+  calibrateTo(lat, lon, footprint) {
     const raw = this.rawHeading();
     if (raw === null) return { ok: false, reason: 'No live compass reading yet.' };
     if (this.currentLat === null) return { ok: false, reason: 'No GPS fix yet.' };
     const gpsWhy = this.gpsTooWeak();
     if (gpsWhy) return { ok: false, reason: gpsWhy };
-    const bearing = _initialBearing(this.currentLat, this.currentLon, lat, lon);
+    let bearing = _initialBearing(this.currentLat, this.currentLon, lat, lon);
+    // A big building is not a point: facing any part of its outline counts as already aligned,
+    // otherwise align to its nearest visible edge.
+    const fp = _footprintView(this.currentLat, this.currentLon, footprint);
+    if (fp && !fp.inside) {
+      const into = (((raw - fp.lo) % 360) + 360) % 360;
+      if (into <= fp.width) {
+        this.compassOffset = 0;
+        return { ok: true, offset: 0, bearing: raw, raw, insideOutline: true };
+      }
+      const toLo = Math.abs(((fp.lo - raw + 540) % 360) - 180);
+      const hiEdge = (fp.lo + fp.width) % 360;
+      const toHi = Math.abs(((hiEdge - raw + 540) % 360) - 180);
+      bearing = toLo <= toHi ? fp.lo : hiEdge;
+    }
     const offset = ((bearing - raw + 540) % 360) - 180;
-    this.compassOffset = offset;
-    try { localStorage.setItem('navassist_compass_offset', String(offset)); } catch (_) {}
+    this.compassOffset = offset; // this session only
     return { ok: true, offset, bearing, raw };
   }
 
@@ -656,6 +671,31 @@ class ArOverlay {
     ctx.restore();
   }
 
+  /** Big edge arrow when the route ahead is outside the camera view: which way to turn. */
+  _drawTurnHint(rel, w, h, topOffset, botOffset) {
+    const { ctx } = this;
+    const behind = Math.abs(rel) > 135;
+    const right = rel > 0;
+    const cy = topOffset + (h - topOffset - botOffset) * 0.52;
+    const cx = behind ? w / 2 : right ? w - 44 : 44;
+    const text = behind ? 'Turn around' : right ? 'Turn right' : 'Turn left';
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 204, 187, 0.92)';
+    ctx.beginPath(); ctx.arc(cx, cy, 30, 0, Math.PI * 2); ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.stroke();
+    ctx.translate(cx, cy);
+    ctx.rotate(behind ? Math.PI / 2 : right ? 0 : Math.PI);
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(-6, -14); ctx.lineTo(-6, -5); ctx.lineTo(-14, -5); ctx.lineTo(-14, 5); ctx.lineTo(-6, 5); ctx.lineTo(-6, 14); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.font = '800 13px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff'; ctx.shadowColor = 'rgba(0,0,0,0.7)'; ctx.shadowBlur = 4;
+    ctx.fillText(text, cx, cy + 48);
+    ctx.restore();
+  }
+
   _drawRoadPathway(heading, w, h, topOffset, botOffset) {
     const { ctx } = this;
     const polyline = this.routePolyline;
@@ -672,37 +712,28 @@ class ArOverlay {
     const horizonY = Math.max(topOffset + 20, Math.min(h - botOffset - 40, topOffset + usableH * 0.44 - pitchShiftPx));
     const footY = h - botOffset - 8;             // starting point right at feet
 
-    // Project points from current position forward
-    const projected = [];
-    for (let i = 0; i < polyline.length && projected.length < 18; i++) {
-      const [pLat, pLon] = polyline[i];
-      const dist = _haversine(this.currentLat, this.currentLon, pLat, pLon);
-      if (dist > MAX_PATH_DISTANCE) break;
-
-      const bearing = _initialBearing(this.currentLat, this.currentLon, pLat, pLon);
-      let rel = bearing - heading;
-      rel = ((rel + 540) % 360) - 180;
-
-      // Project onto ground-plane
-      const t = Math.min(1, Math.sqrt(dist / MAX_PATH_DISTANCE));
-      const py = footY - t * (footY - horizonY);
-      const px = w / 2 + (rel / halfFov) * (w / 2);
-
-      // Width of the road pathway tapers into the distance
-      const roadHalfW = (w * 0.28) * (1 - t * 0.88) + (w * 0.03) * t;
-
-      projected.push({ x: px, y: py, halfW: roadHalfW, dist });
+    // Ground-plane perspective: each route point is converted to metres
+    // right / forward of the user, then projected like a pinhole camera
+    // (x = f * right / forward, y = horizon + f * cameraHeight / forward).
+    // The old version mapped bearing straight to screen X, so any route point
+    // 60+ degrees to the side landed several screens away and the ribbon
+    // lay flat across the picture. Points beside or behind are now clipped
+    // at the near plane, and a turn arrow tells the user which way to turn.
+    const gp = _groundPath(polyline, this.currentLat, this.currentLon, heading,
+      { w, horizonY, footY, fovH: this.fovH, maxDist: MAX_PATH_DISTANCE });
+    this._pathHintRel = gp.lookaheadRel;
+    if (gp.lookaheadRel !== null && Math.abs(gp.lookaheadRel) > halfFov * 0.8) {
+      this._drawTurnHint(gp.lookaheadRel, w, h, topOffset, botOffset);
     }
-
+    const projected = gp.points;
     if (projected.length < 2) return;
-
-    const anchor = { x: w / 2, y: footY, halfW: w * 0.28 };
+    const anchor = projected[0];
 
     // ---- A. Translucent White Outer Pavement Ribbon (Images 1 & 2) ----
     const leftEdge = [{ x: anchor.x - anchor.halfW, y: anchor.y }];
     const rightEdge = [{ x: anchor.x + anchor.halfW, y: anchor.y }];
 
-    for (const p of projected) {
+    for (const p of projected.slice(1)) {
       leftEdge.push({ x: p.x - p.halfW, y: p.y });
       rightEdge.push({ x: p.x + p.halfW, y: p.y });
     }
@@ -724,7 +755,7 @@ class ArOverlay {
     const centerLeft = [{ x: anchor.x - anchor.halfW * 0.45, y: anchor.y }];
     const centerRight = [{ x: anchor.x + anchor.halfW * 0.45, y: anchor.y }];
 
-    for (const p of projected) {
+    for (const p of projected.slice(1)) {
       centerLeft.push({ x: p.x - p.halfW * 0.45, y: p.y });
       centerRight.push({ x: p.x + p.halfW * 0.45, y: p.y });
     }
@@ -737,7 +768,7 @@ class ArOverlay {
     ctx.fill();
 
     // ---- C. Flowing White Arrow Chevrons (> > >) ----
-    const centerPoints = [{ x: anchor.x, y: anchor.y }, ...projected.map(p => ({ x: p.x, y: p.y }))];
+    const centerPoints = projected.map(p => ({ x: p.x, y: p.y }));
     const CHEVRON_COUNT = 6;
     for (let i = 0; i < CHEVRON_COUNT; i++) {
       const p = (i / CHEVRON_COUNT + this._flowPhase) % 1;
@@ -1183,6 +1214,68 @@ function _footprintView(lat, lon, pts) {
   return { inside: false, lo: (((b0 + min) % 360) + 360) % 360, width: max - min, nearestM };
 }
 
+/**
+ * Projects the upcoming part of a route onto the ground in front of the
+ * camera. Returns {points:[{x,y,halfW,dist}], lookaheadRel} where lookaheadRel
+ * is the bearing, relative to where the camera points, of the route about 8 m
+ * ahead (null with no route). Pure function, so it is unit-tested.
+ */
+function _groundPath(polyline, lat, lon, heading, o) {
+  const camH = o.camH || 1.4, widthM = o.halfWidthM || 0.6, maxDist = o.maxDist || 60;
+  const f = (o.w / 2) / Math.tan((o.fovH / 2) * Math.PI / 180);
+  const near = Math.max(0.8, (f * camH) / Math.max(20, o.footY - o.horizonY)); // forward distance that lands on the bottom edge
+  const cosLat = Math.cos((lat * Math.PI) / 180), hr = (heading * Math.PI) / 180;
+  const local = (pLat, pLon) => {
+    const n = (pLat - lat) * 111320, e = (pLon - lon) * 111320 * cosLat;
+    return { right: e * Math.cos(hr) - n * Math.sin(hr), fwd: e * Math.sin(hr) + n * Math.cos(hr) };
+  };
+  const pts = polyline.map(([a, b]) => local(a, b));
+  // Start from the route vertex nearest the user so the part already walked is not drawn.
+  let i0 = 0, best = Infinity;
+  pts.forEach((q, i) => { const d = Math.hypot(q.right, q.fwd); if (d < best) { best = d; i0 = i; } });
+  const path = [{ right: 0, fwd: 0, dist: 0 }];
+  let acc = 0;
+  for (let i = i0; i < pts.length; i++) {
+    const prev = path[path.length - 1];
+    acc += Math.hypot(pts[i].right - prev.right, pts[i].fwd - prev.fwd);
+    path.push({ right: pts[i].right, fwd: pts[i].fwd, dist: acc });
+    if (acc > maxDist) break;
+  }
+  // lookahead direction
+  let lookaheadRel = null;
+  if (path.length > 1) {
+    let tgt = path[path.length - 1];
+    for (const q of path) if (q.dist >= 8) { tgt = q; break; }
+    lookaheadRel = (Math.atan2(tgt.right, tgt.fwd) * 180) / Math.PI;
+  }
+  // clip to fwd >= near, keeping the first contiguous visible run
+  const out = [];
+  const proj = (q) => {
+    const fwd = Math.max(q.fwd, near);
+    const y = Math.min(o.footY, o.horizonY + (f * camH) / fwd);
+    return { x: o.w / 2 + (f * q.right) / fwd, y, halfW: Math.min(o.w * 0.34, (f * widthM) / fwd), dist: q.dist };
+  };
+  for (let i = 0; i < path.length - 1; i++) {
+    const A = path[i], B = path[i + 1];
+    const aIn = A.fwd >= near, bIn = B.fwd >= near;
+    if (!aIn && !bIn) { if (out.length) break; continue; }
+    if (!aIn && bIn) {
+      const t = (near - A.fwd) / (B.fwd - A.fwd);
+      out.push(proj({ right: A.right + t * (B.right - A.right), fwd: near, dist: A.dist + t * (B.dist - A.dist) }));
+      out.push(proj(B));
+    } else if (aIn && !bIn) {
+      if (!out.length) out.push(proj(A));
+      const t = (near - A.fwd) / (B.fwd - A.fwd);
+      out.push(proj({ right: A.right + t * (B.right - A.right), fwd: near, dist: A.dist + t * (B.dist - A.dist) }));
+      break;
+    } else {
+      if (!out.length) out.push(proj(A));
+      out.push(proj(B));
+    }
+  }
+  return { points: out, lookaheadRel };
+}
+
 function _haversine(lat1, lon1, lat2, lon2) {
   const R = 6371000;
   const toR = (d) => (d * Math.PI) / 180;
@@ -1262,3 +1355,4 @@ window.ArOverlay = ArOverlay;
 ArOverlay.quaternionToHeadingDeg = _quaternionToHeadingDeg; // exposed for tests
 
 ArOverlay.footprintView = _footprintView; // exposed for tests
+ArOverlay.groundPath = _groundPath;
