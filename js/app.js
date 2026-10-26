@@ -209,7 +209,7 @@ function init() {
     calFill(); const t = calTarget();
     if (!ar || !t) return calSay('Start the camera and pick a landmark first.');
     const rec = ar.logReading(t.name, t.lat, t.lon);
-    calSay(rec ? `Logged #${ar.fieldLog.length}: facing ${t.name}, sensor ${rec.sensorHeading}°, expected ${rec.expectedBearing}°, error ${rec.errorDeg}°.` : 'No live compass or GPS reading yet.');
+    calSay(rec ? `Logged #${ar.fieldLog.length}: facing ${t.name}, sensor ${rec.sensorHeading}°, expected ${rec.expectedBearing}°, error ${rec.errorDeg}°.` : (ar.gpsTooWeak() || 'No live compass reading yet.'));
   });
   calBtn('cal-copy', async () => {
     if (!ar || !ar.fieldLog.length) return calSay('Nothing logged yet.');
@@ -708,7 +708,10 @@ async function _refreshNearbyPois() {
     // below (it's just commented out, not deleted) once the curated list
     // itself is settled and worth layering more onto.
     _renderDestinationList(campusPlaces);
-    ar && ar.setNearbyBuildings(campusPlaces, lat, lon);
+    // Building list only. This used to also push a one-shot or hard-coded
+    // position into the overlay, which could replace the live GPS position
+    // with a stale one (seen as readings 30 m from where the user stood).
+    ar && ar.setBuildingList(campusPlaces);
 
     // if (!mapDiscovery) mapDiscovery = new MapDiscovery();
     // const mapPois = await mapDiscovery.getDestinationList(lat, lon);

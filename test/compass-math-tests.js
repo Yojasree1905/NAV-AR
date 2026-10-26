@@ -39,6 +39,13 @@ check(`align: bearing ${r.bearing.toFixed(0)} raw 79 offset ${r.offset.toFixed(0
 check('offset persisted', Math.abs(parseFloat(ctx.localStorage.getItem('navassist_compass_offset')) - r.offset) < 1e-9);
 const rec = ar.logReading('G Block', 12.9681514, 79.1595125);
 check('log records error + offset', rec && rec.facing === 'G Block' && Math.abs(rec.errorDeg - r.offset) < 0.2 && rec.calibrationOffset === Math.round(r.offset * 10) / 10 && ar.fieldLog.length === 1);
+ar.gpsAccuracy = null;
+check('unknown GPS accuracy refuses log and align', ar.logReading('x', 12.9681514, 79.1595125) === null && !ar.calibrateTo(12.9681514, 79.1595125).ok);
+ar.gpsAccuracy = 40;
+check('weak GPS (40 m) refuses', /too weak/.test(ar.calibrateTo(12.9681514, 79.1595125).reason));
+ar.gpsAccuracy = 8;
+const keepLat = ar.currentLat; ar.setBuildingList([{ name: 'x' }]);
+check('setBuildingList does not move the user', ar.currentLat === keepLat && ar.nearbyBuildings.length === 1);
 ar.resetCalibration();
 check('reset clears', ar.compassOffset === 0 && ctx.localStorage.getItem('navassist_compass_offset') === null);
 ar._headingAt = Date.now() - 5000;

@@ -227,6 +227,13 @@ class ArOverlay {
     this.activeDestination = null;
   }
 
+  /** A calibration/log needs a live GPS fix with known, small error. Returns a reason string, or null when fine. */
+  gpsTooWeak(maxM = 15) {
+    if (this.gpsAccuracy === null) return 'GPS accuracy is unknown, so the position may be stale. Wait for a fresh GPS fix and try again.';
+    if (this.gpsAccuracy > maxM) return `GPS accuracy is ${Math.round(this.gpsAccuracy)} m, too weak to calibrate. Wait until it is under ${maxM} m.`;
+    return null;
+  }
+
   /** Sensor heading (no calibration), or null when there is no live reading. */
   rawHeading() {
     const live = this.hasLiveHeading && this.heading !== null && (Date.now() - this._headingAt) <= 3000;
@@ -242,6 +249,8 @@ class ArOverlay {
     const raw = this.rawHeading();
     if (raw === null) return { ok: false, reason: 'No live compass reading yet.' };
     if (this.currentLat === null) return { ok: false, reason: 'No GPS fix yet.' };
+    const gpsWhy = this.gpsTooWeak();
+    if (gpsWhy) return { ok: false, reason: gpsWhy };
     const bearing = _initialBearing(this.currentLat, this.currentLon, lat, lon);
     const offset = ((bearing - raw + 540) % 360) - 180;
     this.compassOffset = offset;
@@ -263,6 +272,7 @@ class ArOverlay {
   logReading(name, lat, lon) {
     const raw = this.rawHeading();
     if (raw === null || this.currentLat === null) return null;
+    if (this.gpsTooWeak()) return null;
     const bearing = _initialBearing(this.currentLat, this.currentLon, lat, lon);
     const rec = {
       t: new Date().toISOString(),
@@ -277,6 +287,11 @@ class ArOverlay {
     };
     this.fieldLog.push(rec);
     return rec;
+  }
+
+  /** Updates only the building list; never moves the user's position. */
+  setBuildingList(buildings) {
+    this.nearbyBuildings = Array.isArray(buildings) ? buildings : [];
   }
 
   setNearbyBuildings(buildings, lat, lon) {
