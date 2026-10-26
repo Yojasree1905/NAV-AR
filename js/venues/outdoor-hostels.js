@@ -23,7 +23,8 @@
  *   H Block       → OSM node 14093702529 (on path near H Block; name/node pairing corrected 2026-09-10, see below)
  *   J Block       → OSM node 14165878669 (J Block South Foyer on Hostel Road) — unaffected by the G/H swap
  *   Main Gate     → OSM node 14165878674, named "security point & main gate for hostels" — repositioned ~22m + renamed, 2026-09-09
- *   Convenience Store → OSM node 14165878672 (Crossroad near J Block) — moved <2m, within GPS noise, left as-is
+ *   Convenience Store → centre of the building outlined in the 2026-10-26 export (ways 1557664104 / 1572005880),
+ *                       a small shop north of J Block, beside J's main entrance (6 m) and the hostel gate (15 m)
  * -----------------------------------------------------------------------
  */
 (function () {
@@ -50,7 +51,7 @@
     hostel_j:          { lat: 12.9680483, lon: 79.1590861 }, // OSM 14168860238 — "J Block lift" (lift entrance for luggage), 10.6m from the previous South Foyer point; treated as the same real spot on a building this size and used as the more precise, explicitly-named point. Corrected 2026-09-11.
     j_main_entrance:   { lat: 12.9683346, lon: 79.1594027 }, // OSM 14165878671 — J Block North-East Bend, confirmed by user as the actual main entrance (2026-09-10); distinct from hostel_j (the lift/side entrance) above
     main_gate:         { lat: 12.9683659, lon: 79.1595077 }, // OSM 14165878674 — "security point & main gate for hostels" (repositioned + renamed 2026-09-09)
-    convenience_store: { lat: 12.9679250, lon: 79.1595513 }, // Real GPS-walked coordinate from early on-site calibration (two independent walks, accuracy-weighted) — NOT the OSM crossroad node 14165878672, which route-provider.js's own walkway graph separately and correctly labels "Crossroad between J & H". That node had been mistakenly reused as the Convenience Store's coordinate, making the two indistinguishable on screen. Corrected 2026-09-10.
+    convenience_store: { lat: 12.9683800, lon: 79.1593700 }, // Centroid of the store building in map-hostels.osm (2026-10-26). REPLACES the old (12.9679250, 79.1595513) "GPS-walked" point, which is 54 m south-east of the real building, beside G Block. If you survey the shop door, put that here instead.
   };
 
   // Scoped down to exactly this set 2026-09-11, per explicit request.

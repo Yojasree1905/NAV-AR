@@ -551,3 +551,16 @@ The bottom-left debug line now names the stage that failed, e.g. `Hazard model: 
 Labels are placed from GPS position plus compass direction only, so they appear even when a wall hides the building; each tag shows its distance. They are hidden when GPS error is above 30 m, and can be switched off in Settings (the navigation destination always shows). A label is only as accurate as the coordinate saved for that place: re-capture a coordinate with the in-app "Calibrate waypoints" panel standing at the spot.
 
 Tests: also `node test/e2e-hazard-loading.js` (detector loading failures and retries).
+
+### Map data (`map-hostels.osm`)
+
+`map-hostels.osm` is the OpenStreetMap export of the hostel area (2026-10-26) and is the reference for every coordinate in the app. The older, larger `map.osm` is stale for this area: it still has the G Block and H Block names swapped and no convenience store. What follows from the survey:
+
+- G Block is the tall building east of the north-south road, H Block the one to the south, J Block to the west.
+- The convenience store is a small building just north of J Block's north-east corner, 6 m from J's main entrance and 15 m from the hostel gate (about 68 m from H Block). The app previously stored it 54 m away, beside G Block.
+- `CAMPUS_WALK_NODES` / `CAMPUS_WALK_EDGES` in `js/route-provider.js` mirror the survey's paths, including the short footway from J Block's north-east bend to the main path.
+- Spoken route instructions now name the destination you asked for.
+
+When the map is edited again, replace `map-hostels.osm` and run `node test/map-data-tests.js`: it lists every constant that no longer matches.
+
+Open items in the OSM data itself: the store is drawn twice (ways 1557664104 and 1572005880, one tagged `building=yes`, one `building=shophouse`), the name is spelled "convinience store", and it has no `shop=convenience` tag. The shop's door is not marked, so the app aims at the middle of the building.

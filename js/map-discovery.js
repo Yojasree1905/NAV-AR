@@ -33,7 +33,7 @@ const OVERPASS_FILTERS = [
   '["office"]',
 ];
 
-// Real surveyed campus POIs — walkway entry coordinates from map.osm
+// Real surveyed campus POIs — coordinates from map-hostels.osm (2026-10-26 export)
 // Coordinates match outdoor-hostels.js (walkway entry nodes, not building centroids)
 const CAMPUS_SURVEYED_POIS = [
   {
@@ -84,14 +84,13 @@ const CAMPUS_SURVEYED_POIS = [
     aliases: ['hostel gate', 'main gate', 'the gate', 'security gate', 'gate', 'security point'],
   },
   {
-    // Real GPS-walked coordinate (see outdoor-hostels.js for the full
-    // explanation) -- was previously reusing OSM node 14165878672, which
-    // is actually route-provider.js's "Crossroad between J & H" waypoint,
-    // not the shop. Corrected 2026-09-10.
-    id: 'gps-walked/convenience-store-north',
+    // Position from the building outline in map-hostels.osm (2026-10-26),
+    // replacing an early GPS-walked point that was 54 m off (see
+    // outdoor-hostels.js).
+    id: 'way/1557664104',
     name: 'Convenience Store',
-    lat: 12.9679250,
-    lon: 79.1595513,
+    lat: 12.9683800,
+    lon: 79.1593700,
     type: 'shop',
     purpose: 'Convenience Store near J Block',
     tags: { shop: 'convenience', name: 'Convenience Store' },

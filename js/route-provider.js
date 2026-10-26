@@ -265,7 +265,11 @@ class RouteProvider {
       totalDist += _haversineMeters(points[i][0], points[i][1], points[i+1][0], points[i+1][1]);
     }
 
-    const destName = CAMPUS_WALK_NODES[endNode]?.name || 'your destination';
+    // Speak the destination the user asked for. Falling back to the nearest
+    // path node's name is only for callers that pass no name, because that
+    // node is often a different place (the store's nearest node is "J Block
+    // North-East Bend").
+    const destName = (to.name && String(to.name).trim()) || CAMPUS_WALK_NODES[endNode]?.name || 'your destination';
     const steps = [{ instruction: `Head toward ${destName}.`, distanceMeters: totalDist }];
 
     return {
@@ -279,7 +283,9 @@ class RouteProvider {
 
 // ---------------------------------------------------------------------------
 // Surveyed pedestrian walkway network — Ladies Hostel G/H/J & Hostel Road
-// (from map.osm). ONLY real path nodes are here — no building centroids.
+// (from map-hostels.osm, the 2026-10-26 export). ONLY real path nodes are
+// here — no building centroids. test/map-data-tests.js checks every
+// coordinate and edge below against that file.
 // Block centroids were removed because snapping a route start/end to a
 // building center creates a segment that crosses through the building
 // before reaching the road network, which looks wrong on the AR overlay.
@@ -290,14 +296,19 @@ const CAMPUS_WALK_NODES = {
   '14165878670': { lat: 12.9680110, lon: 79.1589930, name: 'J Block West Side' },
   '10032723291': { lat: 12.9683349, lon: 79.1589822, name: 'J Block North-West Corner' },
   '14165878671': { lat: 12.9683346, lon: 79.1594027, name: 'J Block North-East Bend' },
-  '14165878672': { lat: 12.9681441, lon: 79.1594053, name: 'Crossroad between J & H' },
-  '14165907135': { lat: 12.9680005, lon: 79.1594026, name: 'Passageway between J & H' },
-  '14165878673': { lat: 12.9681076, lon: 79.1595178, name: 'H Block West Entrance' },
-  '14093702530': { lat: 12.9683070, lon: 79.1595854, name: 'H Block North-West Path' },
-  '14165878674': { lat: 12.9683998, lon: 79.1594990, name: 'North Road Pathway' },
-  '14165878675': { lat: 12.9685617, lon: 79.1594558, name: 'Main Gate' },
+  // Names below follow the corrected G/H assignment (G = the tall building east
+  // of the north-south road, H = the one to the south); they used to carry the
+  // swapped names. Coordinates synced to the 2026-10-26 export (several were
+  // 1-11 m stale).
+  '14165878672': { lat: 12.9681540, lon: 79.1594097, name: 'Crossroad between J & G' },
+  '14165907135': { lat: 12.9680005, lon: 79.1594026, name: 'Passageway between J & G' },
+  '14165878673': { lat: 12.9681514, lon: 79.1595125, name: 'G Block West Entrance' },
+  '14093702530': { lat: 12.9683127, lon: 79.1595056, name: 'G Block North-West Path' },
+  '14167004875': { lat: 12.9683460, lon: 79.1595069, name: 'Path junction north of G Block' },
+  '14165878674': { lat: 12.9683659, lon: 79.1595077, name: 'Hostel Gate' },
+  '14165878675': { lat: 12.9684669, lon: 79.1594921, name: 'North Road End' },
   '14165878676': { lat: 12.9677647, lon: 79.1595216, name: 'Courtyard Walkway' },
-  '14093702529': { lat: 12.9677686, lon: 79.1593426, name: 'G Block North Entrance' },
+  '14093702529': { lat: 12.9677686, lon: 79.1593426, name: 'H Block North Entrance' },
   '14093702528': { lat: 12.9677581, lon: 79.1598230, name: 'G Block East Road' },
 };
 
@@ -315,8 +326,10 @@ const CAMPUS_WALK_EDGES = [
   ['14165878671', '14165878672'],
   ['14165878672', '14165878673'],
   ['14165878673', '14093702530'],
-  ['14093702530', '14165878674'],
+  ['14093702530', '14167004875'],
+  ['14167004875', '14165878674'],
   ['14165878674', '14165878675'],
+  ['14165878671', '14167004875'], // footway beside the convenience store: J Block NE bend -> main path (11 m)
 ];
 
 // Pre-compute campus walkway adjacency graph
