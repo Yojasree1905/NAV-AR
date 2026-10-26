@@ -676,7 +676,7 @@ class ArOverlay {
     const { ctx } = this;
     const behind = Math.abs(rel) > 135;
     const right = rel > 0;
-    const cy = topOffset + (h - topOffset - botOffset) * 0.52;
+    const cy = topOffset + (h - topOffset - botOffset) * 0.30;
     const cx = behind ? w / 2 : right ? w - 44 : 44;
     const text = behind ? 'Turn around' : right ? 'Turn right' : 'Turn left';
     ctx.save();
@@ -1248,31 +1248,30 @@ function _groundPath(polyline, lat, lon, heading, o) {
     for (const q of path) if (q.dist >= 8) { tgt = q; break; }
     lookaheadRel = (Math.atan2(tgt.right, tgt.fwd) * 180) / Math.PI;
   }
-  // clip to fwd >= near, keeping the first contiguous visible run
-  const out = [];
-  const proj = (q) => {
-    const fwd = Math.max(q.fwd, near);
-    const y = Math.min(o.footY, o.horizonY + (f * camH) / fwd);
-    return { x: o.w / 2 + (f * q.right) / fwd, y, halfW: Math.min(o.w * 0.34, (f * widthM) / fwd), dist: q.dist };
-  };
-  for (let i = 0; i < path.length - 1; i++) {
-    const A = path[i], B = path[i + 1];
-    const aIn = A.fwd >= near, bIn = B.fwd >= near;
-    if (!aIn && !bIn) { if (out.length) break; continue; }
-    if (!aIn && bIn) {
-      const t = (near - A.fwd) / (B.fwd - A.fwd);
-      out.push(proj({ right: A.right + t * (B.right - A.right), fwd: near, dist: A.dist + t * (B.dist - A.dist) }));
-      out.push(proj(B));
-    } else if (aIn && !bIn) {
-      if (!out.length) out.push(proj(A));
-      const t = (near - A.fwd) / (B.fwd - A.fwd);
-      out.push(proj({ right: A.right + t * (B.right - A.right), fwd: near, dist: A.dist + t * (B.dist - A.dist) }));
-      break;
-    } else {
-      if (!out.length) out.push(proj(A));
-      out.push(proj(B));
+  // Densify so the curve stays smooth after the non-linear mapping, drop near-duplicates.
+  const dense = [path[0]];
+  for (let i = 1; i < path.length; i++) {
+    const A = dense[dense.length - 1], B = path[i];
+    const len = Math.hypot(B.right - A.right, B.fwd - A.fwd);
+    if (len < 0.3) continue;
+    const steps = Math.max(1, Math.ceil(len / 2));
+    for (let k = 1; k <= steps; k++) {
+      const t = k / steps;
+      dense.push({ right: A.right + t * (B.right - A.right), fwd: A.fwd + t * (B.fwd - A.fwd), dist: A.dist + t * (B.dist - A.dist) });
     }
   }
+  // Perspective inside the camera view; beyond it the ribbon is pinned to the
+  // screen edge (at the right depth), so it always starts at the feet and
+  // visibly bends toward the route instead of vanishing or lying flat.
+  const maxRel = ((o.fovH / 2) * 0.9 * Math.PI) / 180;
+  const out = dense.map((q) => {
+    const d = Math.hypot(q.right, q.fwd);
+    if (d < 0.05) return { x: o.w / 2, y: o.footY, halfW: Math.min(o.w * 0.34, (f * widthM) / near), dist: q.dist };
+    const rel = Math.atan2(q.right, q.fwd);
+    const c = Math.max(-maxRel, Math.min(maxRel, rel));
+    const dEff = Math.max(d * Math.cos(c), near);
+    return { x: o.w / 2 + f * Math.tan(c), y: Math.min(o.footY, o.horizonY + (f * camH) / dEff), halfW: Math.min(o.w * 0.34, (f * widthM) / dEff), dist: q.dist };
+  });
   return { points: out, lookaheadRel };
 }
 
