@@ -29,5 +29,20 @@ for (const alpha of [0, 45, 90, 180, 270, 300, 359]) {
 check('flat, top facing north = 0', diff(toHeading(quat(0, 0, 0)), 0) < 0.5);
 check('flat, top facing east (alpha 270) = 90', diff(toHeading(quat(270, 0, 0)), 90) < 0.5);
 check('malformed reading -> null', toHeading(null) === null && toHeading([NaN, 0, 0, 1]) === null);
+// --- field calibration + log ---
+ctx.localStorage = { _m: {}, getItem(k) { return this._m[k] ?? null; }, setItem(k, v) { this._m[k] = String(v); }, removeItem(k) { delete this._m[k]; } };
+const ar = Object.create(ctx.ArOverlay.prototype);
+Object.assign(ar, { heading: 79, hasLiveHeading: true, _headingAt: Date.now(), headingSource: 'sensor-api', compassOffset: 0, fieldLog: [], currentLat: 12.9680, currentLon: 79.1594, gpsAccuracy: 8 });
+// G Block entrance is ~36 degrees from here; sensor says 79 -> correction about -43
+const r = ar.calibrateTo(12.9681514, 79.1595125);
+check(`align: bearing ${r.bearing.toFixed(0)} raw 79 offset ${r.offset.toFixed(0)}`, r.ok && Math.abs(r.bearing - 79 - r.offset) < 0.01 && r.offset < -30 && r.offset > -50);
+check('offset persisted', Math.abs(parseFloat(ctx.localStorage.getItem('navassist_compass_offset')) - r.offset) < 1e-9);
+const rec = ar.logReading('G Block', 12.9681514, 79.1595125);
+check('log records error + offset', rec && rec.facing === 'G Block' && Math.abs(rec.errorDeg - r.offset) < 0.2 && rec.calibrationOffset === Math.round(r.offset * 10) / 10 && ar.fieldLog.length === 1);
+ar.resetCalibration();
+check('reset clears', ar.compassOffset === 0 && ctx.localStorage.getItem('navassist_compass_offset') === null);
+ar._headingAt = Date.now() - 5000;
+check('stale compass refuses to align/log', !ar.calibrateTo(12.9681514, 79.1595125).ok && ar.logReading('x', 1, 1) === null);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -30,6 +30,9 @@ class ArOverlay {
 
     // Orientation
     this.heading = null;
+    this.compassOffset = 0;   // degrees added to the sensor heading when placing labels (field calibration)
+    try { const o = parseFloat(localStorage.getItem('navassist_compass_offset')); if (Number.isFinite(o)) this.compassOffset = o; } catch (_) {}
+    this.fieldLog = [];       // readings recorded by the field-test panel
     this.hasLiveHeading = false;
     this.headingSource = null; // 'sensor-api' | 'deviceorientation' | 'gps-course' | null — which method actually delivered a reading, shown in the debug readout
     this.pitch = null; // device tilt (beta), for making the path respond to how the phone is actually held
@@ -222,6 +225,58 @@ class ArOverlay {
     this.destLabel = '';
     this.distanceRemaining = null;
     this.activeDestination = null;
+  }
+
+  /** Sensor heading (no calibration), or null when there is no live reading. */
+  rawHeading() {
+    const live = this.hasLiveHeading && this.heading !== null && (Date.now() - this._headingAt) <= 3000;
+    return live ? this.heading : null;
+  }
+
+  /**
+   * Field calibration: the user faces a known landmark and taps "align".
+   * offset = true bearing to the landmark - what the sensor says.
+   * Returns {ok, offset, bearing, raw} or {ok:false, reason}.
+   */
+  calibrateTo(lat, lon) {
+    const raw = this.rawHeading();
+    if (raw === null) return { ok: false, reason: 'No live compass reading yet.' };
+    if (this.currentLat === null) return { ok: false, reason: 'No GPS fix yet.' };
+    const bearing = _initialBearing(this.currentLat, this.currentLon, lat, lon);
+    const offset = ((bearing - raw + 540) % 360) - 180;
+    this.compassOffset = offset;
+    try { localStorage.setItem('navassist_compass_offset', String(offset)); } catch (_) {}
+    return { ok: true, offset, bearing, raw };
+  }
+
+  resetCalibration() {
+    this.compassOffset = 0;
+    try { localStorage.removeItem('navassist_compass_offset'); } catch (_) {}
+  }
+
+  /**
+   * Records one field-test reading while the user faces a named landmark:
+   * what the sensor says, where GPS says we are, what the bearing to the
+   * landmark should be, and the resulting error. Copy the log out and the
+   * whole set can be analysed offline.
+   */
+  logReading(name, lat, lon) {
+    const raw = this.rawHeading();
+    if (raw === null || this.currentLat === null) return null;
+    const bearing = _initialBearing(this.currentLat, this.currentLon, lat, lon);
+    const rec = {
+      t: new Date().toISOString(),
+      facing: name,
+      sensorHeading: Math.round(raw * 10) / 10,
+      source: this.headingSource,
+      calibrationOffset: Math.round(this.compassOffset * 10) / 10,
+      lat: this.currentLat, lon: this.currentLon, gpsAccuracyM: this.gpsAccuracy,
+      expectedBearing: Math.round(bearing * 10) / 10,
+      distanceM: Math.round(_haversine(this.currentLat, this.currentLon, lat, lon)),
+      errorDeg: Math.round((((bearing - raw + 540) % 360) - 180) * 10) / 10,
+    };
+    this.fieldLog.push(rec);
+    return rec;
   }
 
   setNearbyBuildings(buildings, lat, lon) {
@@ -471,6 +526,10 @@ class ArOverlay {
       }
     }
 
+    // Field calibration: the sensor heading stays untouched in this.heading;
+    // only label/path placement uses the corrected value.
+    if (this.compassOffset) heading = (((heading + this.compassOffset) % 360) + 360) % 360;
+
     // -- Update mini-compass --
     if (window.miniMap) {
       window.miniMap.updateCompass(heading);
@@ -511,7 +570,7 @@ class ArOverlay {
       (d.alphaNullEvents ? ` alpha-null:${d.alphaNullEvents}` : '') +
       ` sensor-api:${d.sensorApiStatus}`;
     const compassLine = this.headingSource
-      ? `Compass: ${Math.round(this.heading)}°${sourceTag}`
+      ? `Compass: ${Math.round(this.heading)}°${sourceTag}${this.compassOffset ? ` cal ${this.compassOffset > 0 ? '+' : ''}${Math.round(this.compassOffset)}°` : ''}`
       : this._compassStale
         ? `Compass: STALE, last ${Math.round(this.heading)}°${diagTag}`
         : `Compass: NO SIGNAL (assuming north)${diagTag}`;

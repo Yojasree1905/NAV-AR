@@ -568,3 +568,6 @@ Open items in the OSM data itself: the store is drawn twice (ways 1557664104 and
 
 ### Compass maths test
 `node test/compass-math-tests.js` checks the sensor-API heading against the W3C orientation definition (it was 90 degrees off before 2026-10-26).
+
+### Compass field test (Settings, bottom of "Nearby Building Labels")
+Stand still facing a landmark, pick it in the list, then tap **Align** (corrects the compass to it, kept across restarts), **Log** (records sensor heading, GPS, expected bearing and error without changing anything), **Copy log** or **Reset**. Tests: `node test/compass-math-tests.js`, `node test/e2e-calibration.js`.

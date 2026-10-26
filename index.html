@@ -255,6 +255,18 @@
             <span class="slider round"></span>
           </label>
         </div>
+        <div class="setting-item">
+          <span class="setting-label">Compass field test</span>
+          <span class="setting-subtext">Stand still, face a landmark, pick it here. "Align" corrects the compass to it. "Log" records the reading without changing anything. "Copy log" puts all readings on the clipboard.</span>
+          <select id="cal-landmark" style="width:100%;margin:8px 0;padding:8px;"></select>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button id="cal-align" type="button" class="btn">Align</button>
+            <button id="cal-log" type="button" class="btn">Log</button>
+            <button id="cal-copy" type="button" class="btn">Copy log</button>
+            <button id="cal-reset" type="button" class="btn">Reset</button>
+          </div>
+          <span id="cal-status" class="setting-subtext" style="display:block;margin-top:6px;"></span>
+        </div>
       </section>
 
       <!-- Section 6: AI Voice Assistant -->

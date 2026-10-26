@@ -183,6 +183,42 @@ function init() {
     });
   }
 
+
+  // --- Compass field test / calibration (settings panel) ---
+  const calSel = document.getElementById('cal-landmark');
+  const calStatus = document.getElementById('cal-status');
+  const calSay = (t) => { if (calStatus) calStatus.textContent = t; };
+  const calTarget = () => (_allDestinations || []).find((d) => (d.id || d.name) === (calSel && calSel.value));
+  const calFill = () => {
+    if (!calSel || calSel.options.length > 0) return;
+    for (const d of (_allDestinations || [])) {
+      if (d.lat == null || d.lon == null) continue;
+      const o = document.createElement('option');
+      o.value = d.id || d.name; o.textContent = d.name; calSel.appendChild(o);
+    }
+  };
+  if (calSel) { calFill(); calSel.addEventListener('focus', calFill); calSel.addEventListener('mousedown', calFill); }
+  const calBtn = (id, fn) => { const b = document.getElementById(id); if (b) b.addEventListener('click', fn); };
+  calBtn('cal-align', () => {
+    calFill(); const t = calTarget();
+    if (!ar || !t) return calSay('Start the camera and pick a landmark first.');
+    const r = ar.calibrateTo(t.lat, t.lon);
+    calSay(r.ok ? `Aligned to ${t.name}: sensor ${Math.round(r.raw)}°, should be ${Math.round(r.bearing)}°, correction ${r.offset > 0 ? '+' : ''}${Math.round(r.offset)}° (GPS accuracy ${ar.gpsAccuracy == null ? '?' : Math.round(ar.gpsAccuracy) + ' m'}).` : r.reason);
+  });
+  calBtn('cal-log', () => {
+    calFill(); const t = calTarget();
+    if (!ar || !t) return calSay('Start the camera and pick a landmark first.');
+    const rec = ar.logReading(t.name, t.lat, t.lon);
+    calSay(rec ? `Logged #${ar.fieldLog.length}: facing ${t.name}, sensor ${rec.sensorHeading}°, expected ${rec.expectedBearing}°, error ${rec.errorDeg}°.` : 'No live compass or GPS reading yet.');
+  });
+  calBtn('cal-copy', async () => {
+    if (!ar || !ar.fieldLog.length) return calSay('Nothing logged yet.');
+    const text = JSON.stringify(ar.fieldLog, null, 1);
+    try { await navigator.clipboard.writeText(text); calSay(`Copied ${ar.fieldLog.length} readings. Paste them into the chat.`); }
+    catch (_) { calSay('Could not copy. Long-press this text to copy: ' + text.slice(0, 600)); }
+  });
+  calBtn('cal-reset', () => { if (ar) ar.resetCalibration(); calSay('Calibration cleared.'); });
+
   if (els.vibrationToggle) {
     els.vibrationToggle.addEventListener('change', (e) => {
       settings.vibrationEnabled = e.target.checked;
