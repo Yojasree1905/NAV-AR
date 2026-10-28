@@ -257,6 +257,9 @@ class VoiceIO {
    * Manual activation via mic button tap: opens the 8s active listening window.
    */
   triggerWakeMode() {
+    // Tapping the mic means "I want to speak": stop the assistant talking over the user.
+    try { this.synth && this.synth.cancel(); } catch (_) {}
+    this.isSpeaking = false;
     this.wakeWordActive = true;
     this.playChime('wake');
     this._emitState('listening');
@@ -289,8 +292,18 @@ class VoiceIO {
     const raw = transcript.toLowerCase().trim();
     if (!raw) return;
 
-    // Suppress recognition while synthesized speech is outputting to avoid audio feedback
-    if (this.isSpeaking) return;
+    // While the assistant is talking the microphone also hears the speaker, so
+    // plain chatter and echoes are ignored. But on a route the assistant talks
+    // almost constantly, and dropping everything meant a spoken "take me to H
+    // Block" was lost. So a transcript that carries the wake word (or arrives
+    // inside the window opened by tapping the mic) is accepted and the speech
+    // is cut off. Echo of the assistant's own sentence is filtered out.
+    if (this.isSpeaking) {
+      const wakeNow = /\b(hey\s*nav|hi\s*nav|ok\s*nav|okay\s*nav|hey\s*navigator|nav|navigator)\b/i.test(raw);
+      if (!(wakeNow || this.wakeWordActive || this._isHotCommand(raw)) || this._isEchoOfOwnSpeech(raw)) return;
+      try { this.synth && this.synth.cancel(); } catch (_) {}
+      this.isSpeaking = false;
+    }
 
     // Wake word patterns: "hey nav", "hi nav", "ok nav", "nav", "navigator".
     // Word-boundary anchors mean this never fires mid-word — "navigate to
@@ -326,6 +339,14 @@ class VoiceIO {
       return;
     }
 
+    // On an active route a clear navigation command needs no wake word:
+    // "take me to H Block", "change route to G block", "stop navigation".
+    if (!this.wakeWordActive && this._isHotCommand(raw)) {
+      this._emitState('processing');
+      this._processCommand(raw);
+      return;
+    }
+
     // If wake word window is active, process the user's follow-up command
     if (this.wakeWordActive) {
       this._clearWakeTimeout();
@@ -335,8 +356,37 @@ class VoiceIO {
     }
   }
 
+  /** A strongly worded navigation command, accepted without the wake word while a route is active. */
+  _isHotCommand(raw) {
+    if (!(typeof this.isNavigating === 'function' && this.isNavigating())) return false;
+    return /^(?:please\s+|now\s+)?(?:take me to|navigate to|guide me to|go to|bring me to|change (?:the )?(?:route|destination) to|stop navigation|cancel navigation|end navigation|stop the route|repeat)\b/.test(String(raw).trim());
+  }
+
+  /** True when the heard text is (part of) the sentence the assistant is saying itself. */
+  _isEchoOfOwnSpeech(raw) {
+    const norm = (t) => String(t || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const heard = norm(raw), said = norm(this.lastSpokenText);
+    if (!heard || !said) return false;
+    return said.includes(heard) || (heard.length > 12 && heard.includes(said));
+  }
+
   _processCommand(text) {
     const cleanText = text.replace(/^[,\.\?!:;\s-]+|[,\.\?!:;\s-]+$/g, '').trim();
+
+    // 0. An explicit "take me to X" always wins. It is checked before stop/status/skip so that
+    // "take me to the bus stop" is not read as "stop" and "find me the store" is not read as
+    // "find me" (where am I).
+    const goMatch = cleanText.match(
+      /\b(?:take me to|take me|bring me to|lead me to|guide me to|navigate to|go to|walk to|head to|route to|directions to|i want to go to|i need to go to|change (?:the )?(?:route|destination) to|instead (?:take me )?to|find me|where is|where's|find|show me)\s+(?:the\s+)?(.{2,})$/
+    );
+    if (goMatch) {
+      const dest = goMatch[1].replace(/\b(please|now|instead)\b/g, '').replace(/^[,\.\?!:;\s-]+|[,\.\?!:;\s-]+$/g, '').trim();
+      if (dest && !/^(my location|me|where i am|my position)$/.test(dest)) {
+        this.playChime('success');
+        this.onDestinationRequest && this.onDestinationRequest(dest);
+        return;
+      }
+    }
 
     // 1. Stop / Cancel commands
     if (/\b(stop|cancel|end navigation|pause navigation|stop route)\b/.test(cleanText)) {

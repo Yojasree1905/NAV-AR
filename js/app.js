@@ -123,6 +123,7 @@ function init() {
   voice.vibrationEnabled = settings.vibrationEnabled;
 
   // OpenAI setup
+  voice.isNavigating = () => state.phase === 'navigating';
   aiAssistant = new AiAssistant();
   const savedKey = localStorage.getItem('navassist_openai_key');
   if (savedKey) {
@@ -1018,7 +1019,7 @@ function _handleGpsError(err) {
 // ------------------------------------------------------------------
 
 async function getFreshGpsFix() {
-  if (gpsTracker?.lastFix && Date.now() - gpsTracker.lastFix.timestamp < 5000) {
+  if (gpsTracker?.lastFix && Date.now() - gpsTracker.lastFix.timestamp < 15000) {
     return gpsTracker.lastFix;
   }
   if (!navigator.geolocation) return null;

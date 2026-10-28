@@ -577,3 +577,6 @@ G, H, J and the convenience store carry their OSM outlines (`FOOTPRINTS` in `js/
 
 ### Route ribbon and compass correction
 The route ribbon is projected on the ground like a camera sees it (`_groundPath` in `js/ar.js`); when the route ahead is outside the view, a "Turn left / right / around" arrow shows instead of a sideways ribbon. The compass **Align** correction now lasts for the current session only and does nothing when you are already facing the building. Tests: `node test/path-tests.js`.
+
+### Voice commands during a route
+While the assistant is talking, a command with the wake word ("Hey Nav, take me to H Block"), or any command after tapping the mic, now cuts the speech off and is handled; the assistant's own sentences are ignored as echo. On an active route, strong commands ("take me to…", "go to…", "change route to…", "stop navigation") work without the wake word. "Take me to the bus stop" and "find me the store" are destinations, not "stop" / "where am I". Spoken letters ("jay block", "age block", "gee block") are mapped to J/H/G. Tests: `node test/voice-command-tests.js`, `node test/e2e-voice-route.js`.

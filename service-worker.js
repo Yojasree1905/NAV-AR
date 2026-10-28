@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nav-ar-v17';
+const CACHE_NAME = 'nav-ar-v18';
 const CORE_ASSETS = [
   './',
   './index.html',

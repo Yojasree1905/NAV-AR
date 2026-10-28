@@ -49,9 +49,26 @@ function gpsEdge(a, b) {
 
 // Fuzzy-match a spoken phrase against a list of GPS nodes' aliases & labels.
 // Used by the outdoor venue to resolve "hostel j", "j block", "main gate", etc.
+/**
+ * Speech recognition often writes a spoken letter as a word ("jay block",
+ * "age block", "gee block") or mishears "block" ("j lock", "h black").
+ * Map those back to "j block", "h block", "g block" before matching.
+ */
+function normalizeSpokenPlace(phrase) {
+  let t = String(phrase || '').toLowerCase().trim();
+  t = t.replace(/\b(?:the|a)\s+(?=[ghj]\s)/g, '');
+  const LETTERS = { g: 'gee|jee|ji|gi|g\\.', h: 'aitch|age|each|ach|edge|eight|8|h\\.', j: 'jay|jai|jae|jey|j\\.' };
+  for (const [letter, words] of Object.entries(LETTERS)) {
+    t = t.replace(new RegExp('\\b(?:' + words + ')\\s*(?=(?:block|lock|black|plot|clock|blog)\\b)', 'g'), letter + ' ');
+  }
+  t = t.replace(/\b([ghj])\s*(?:lock|black|plot|clock|blog|blocks)\b/g, '$1 block');
+  t = t.replace(/\b(?:convenient|convenience|conveniences)\s+(?:store|shop|stores)\b/g, 'convenience store');
+  return t.replace(/\s+/g, ' ').trim();
+}
+
 function resolveGpsNode(nodes, phrase) {
   if (!nodes || !phrase) return null;
-  const text = phrase.toLowerCase().trim();
+  const text = normalizeSpokenPlace(phrase);
   let best = null;
   let bestScore = 0;
 
@@ -108,3 +125,6 @@ function registerVenue({ id, label, nodes, edges, isOutdoor }) {
 window.registerVenue = registerVenue;
 window.resolveGpsNode = resolveGpsNode;
 window.__venueHelpers = { gpsNode, gpsEdge, haversineDistance, initialBearing };
+
+if (typeof window !== 'undefined') { window.normalizeSpokenPlace = normalizeSpokenPlace; }
+if (typeof module !== 'undefined' && module.exports) { module.exports.normalizeSpokenPlace = normalizeSpokenPlace; }
